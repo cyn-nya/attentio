@@ -18,7 +18,9 @@ import { GRADE_BLURB, categoryLabel, clockTime, humanDuration, percent } from '@
 import type { ActivitySegment, DayStats, JournalEntry, ReportKind } from '@attentio/shared';
 
 export type Locale = 'en' | 'zh';
-export type RedactionLevel = 'app' | 'context' | 'full';
+import type { RedactionLevel } from '@attentio/shared';
+
+export type { RedactionLevel };
 
 export interface ReportBundle {
   day: string;
@@ -333,7 +335,7 @@ export function buildRedactedPayload(
       switches: app.switches,
     };
     if (level === 'app') return base;
-    // `context` and `full` add where the time actually went inside the app.
+    // `context` adds where the time actually went inside the app.
     return {
       ...base,
       contexts: app.contexts

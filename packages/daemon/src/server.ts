@@ -34,6 +34,7 @@ import type {
   PairResponse,
   Platform,
   PublicSettings,
+  ReportPreviewResponse,
   SseEvent,
   TaskStatus,
   TasksQuery,
@@ -52,6 +53,7 @@ import {
 import { toPublicSettings, type AttentioConfig } from './config.ts';
 import type { Db } from './db/index.ts';
 import type { Engine } from './engine.ts';
+import { buildRedactedPayload } from './report.ts';
 
 export const VERSION = '0.1.0';
 
@@ -311,6 +313,35 @@ export async function createAttentioServer(options: ServerOptions): Promise<Atte
         ...(deviceId ? { deviceId } : {}),
         minBlockMs: config.focus.minBlockMin * 60_000,
       }));
+      return;
+    }
+
+    // The preview exists so the dashboard can show exactly what would leave the
+    // machine *before* it does. It is a read-only route on purpose: nothing that
+    // builds a payload can also transmit it.
+    if (path === `${API_PREFIX}/reports/preview` && method === 'GET') {
+      const day = url.searchParams.get('day');
+      const deviceId = url.searchParams.get('deviceId');
+      const stats = computeDay({ db, config }, {
+        ...(day ? { day } : {}),
+        ...(deviceId ? { deviceId } : {}),
+      }).stats;
+      const from = stats.day ? new Date(`${stats.day}T00:00:00`).getTime() : Date.now() - 86_400_000;
+      const to = from + 86_400_000;
+      const journal = db.listJournal({ from, to, limit: 20 });
+      const payload = buildRedactedPayload(stats, journal, {
+        level: config.ai.redaction,
+        locale: config.ai.language,
+        includeJournal: true,
+      });
+      sendJson(res, 200, {
+        payload,
+        level: config.ai.redaction,
+        bytes: Buffer.byteLength(JSON.stringify(payload), 'utf8'),
+        endpoint: config.ai.enabled && config.ai.apiKey ? `${config.ai.baseUrl.replace(/\/+$/, '')}/chat/completions` : null,
+        model: config.ai.model,
+        aiEnabled: config.ai.enabled && config.ai.apiKey.length > 0,
+      } satisfies ReportPreviewResponse);
       return;
     }
 

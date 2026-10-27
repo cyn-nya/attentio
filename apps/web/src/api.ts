@@ -8,6 +8,7 @@
 
 import { API_PREFIX, SSE_PATH } from '@attentio/shared';
 import type {
+  ReportPreviewResponse,
   BlocksResponse,
   CreateJournalRequest,
   CreateTaskRequest,
@@ -141,6 +142,10 @@ export const api = {
   deleteJournal: (id: number) => request<{ ok: boolean }>(`/journal/${id}`, { method: 'DELETE' }),
 
   reports: () => request<ReportsResponse>('/reports'),
+
+  /** Exactly what an AI report would transmit, so the user can read it first. */
+  reportPreview: (day?: string) =>
+    request<ReportPreviewResponse>(`/reports/preview${query({ day })}`),
 
   generateReport: (body: { day?: string; kind?: string; statsOnly?: boolean; instruction?: string }) =>
     request<ReportsResponse['reports'][number]>('/reports/generate', {

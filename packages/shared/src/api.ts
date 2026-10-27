@@ -15,6 +15,7 @@ import type {
   Device,
   FocusBlock,
   JournalEntry,
+  RedactionLevel,
   ReportKind,
   ReportRecord,
   Task,
@@ -125,6 +126,25 @@ export interface BlocksResponse {
 
 export interface ReportsResponse {
   reports: ReportRecord[];
+}
+
+/**
+ * Exactly what an AI report would transmit, so the user can read it first.
+ *
+ * This type exists because "we redact before sending" is not a promise anyone
+ * can check. The preview is the check: it is a read-only route, and the payload
+ * it returns is produced by the same function the sender uses.
+ */
+export interface ReportPreviewResponse {
+  /** The literal JSON body that would be posted to the model. */
+  payload: Record<string, unknown>;
+  level: RedactionLevel;
+  /** Serialised size, because "a summary" should have a number attached. */
+  bytes: number;
+  /** Where it would go. Null when no provider is configured. */
+  endpoint: string | null;
+  model: string;
+  aiEnabled: boolean;
 }
 
 export interface GenerateReportRequest {

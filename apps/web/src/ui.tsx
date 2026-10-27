@@ -342,9 +342,15 @@ export function DayPicker({ value, onChange }: { value: string; onChange: (day: 
   );
 }
 
+/**
+ * Local calendar day key.
+ *
+ * Days are local calendar days, matching `dayBounds()` in the daemon. A 4am
+ * boundary for late-night work is planned (see docs/ROADMAP.md) but must be
+ * implemented in the daemon first: a client that shifts the date on its own just
+ * asks for a day the engine never wrote.
+ */
 export function toDayKey(date: Date): string {
   const pad = (n: number) => String(n).padStart(2, '0');
-  // Logical day: the boundary is 4am, so 01:30 belongs to the previous date.
-  const shifted = new Date(date.getTime() - (date.getHours() < 4 ? 86_400_000 : 0));
-  return `${shifted.getFullYear()}-${pad(shifted.getMonth() + 1)}-${pad(shifted.getDate())}`;
+  return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}`;
 }

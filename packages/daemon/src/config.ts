@@ -14,9 +14,11 @@ import { dirname, join, resolve } from 'node:path';
 import { randomUUID } from 'node:crypto';
 
 import type { FocusWeights } from '@attentio/shared';
-import { DEFAULT_FOCUS_WEIGHTS, weightPreset } from '@attentio/shared';
+import { DEFAULT_FOCUS_WEIGHTS, parseRedactionLevel, weightPreset } from '@attentio/shared';
+import type { RedactionLevel } from '@attentio/shared';
 
-export type RedactionLevel = 'app' | 'context' | 'full';
+export type { RedactionLevel } from '@attentio/shared';
+export { parseRedactionLevel } from '@attentio/shared';
 export type FocusPreset = 'balanced' | 'deep' | 'calm' | 'custom';
 
 export interface AiConfig {
@@ -102,7 +104,7 @@ export function defaultConfig(): AttentioConfig {
       baseUrl: 'https://api.openai.com/v1',
       apiKey: '',
       model: 'gpt-4o-mini',
-      redaction: 'app',
+      redaction: 'app' satisfies RedactionLevel,
       dailyReportHour: 21,
       language: 'en',
       maxTokens: 1200,
@@ -263,6 +265,10 @@ export function loadConfig(options: LoadOptions = {}): LoadedConfig {
 
   // A config that lost its id (hand-edited) must get a fresh one, not ''.
   if (!config.deviceId) config.deviceId = randomUUID();
+
+  // Hand-edited, or written by an older version: normalise rather than trust.
+  // A redaction level must never be silently broader than the setting claims.
+  config.ai.redaction = parseRedactionLevel(config.ai.redaction);
 
   // Persist *before* environment overrides are applied: a one-off
   // `ATTENTIO_PORT=1234 attentio start` must not quietly rewrite the stored port.

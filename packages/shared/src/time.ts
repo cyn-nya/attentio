@@ -101,6 +101,14 @@ export function overlapWithDay(start: number, end: number, key: string): number 
  * "Today" for reporting purposes: a day is considered to start at `dayStartHour`
  * so that work done at 01:30 belongs to the previous day's log. Defaults to 4am,
  * which is the convention most sleep-aware trackers converge on.
+ *
+ * NOT YET USED for day selection. The daemon currently slices days at local
+ * midnight (`dayBounds()` in analytics.ts) and the clients follow it, so wiring
+ * either of these into a UI on its own would ask for a day the engine never
+ * wrote. Implementing the boundary means moving `dayBounds()` and `todayKey()`
+ * together and adding `tracking.dayStartHour` to the config; see
+ * docs/ROADMAP.md. They are kept, and tested, because this arithmetic is the
+ * part that is easy to get wrong.
  */
 export function logicalDayKey(ts: number, dayStartHour = 4): string {
   return dayKey(ts - dayStartHour * HOUR);

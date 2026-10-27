@@ -10,7 +10,13 @@
 import { useState } from 'preact/hooks';
 
 import { clockTime, describeParsedTask, parseTaskInput } from '@attentio/shared';
-import type { JournalEntry, PublicSettings, ReportRecord, Task } from '@attentio/shared';
+import type {
+  JournalEntry,
+  PublicSettings,
+  ReportPreviewResponse,
+  ReportRecord,
+  Task,
+} from '@attentio/shared';
 
 import { api } from './api.ts';
 import { Card, Empty, ErrorNote, Spinner } from './ui.tsx';
@@ -275,10 +281,20 @@ export function ReportsView({
   const [busy, setBusy] = useState(false);
   const [instruction, setInstruction] = useState('');
   const [open, setOpen] = useState<number | null>(reports[0]?.id ?? null);
+  const [preview, setPreview] = useState<ReportPreviewResponse | null>(null);
+  const [showPreview, setShowPreview] = useState(false);
 
-  const generate = async (statsOnly: boolean) => {
+  const generate = async (statsOnly: boolean, confirmed = false) => {
     setBusy(true);
     try {
+      if (!statsOnly && aiEnabled && !confirmed) {
+        // Nothing is transmitted until the payload has been fetched and shown.
+        // This is the difference between "we redact before sending" being a
+        // claim and being something the user can look at.
+        setPreview(await api.reportPreview(day));
+        setShowPreview(true);
+        return;
+      }
       const record = await api.generateReport({
         day,
         kind: 'daily',
@@ -286,6 +302,7 @@ export function ReportsView({
         ...(instruction.trim() && !statsOnly ? { instruction: instruction.trim() } : {}),
       });
       setOpen(record.id);
+      setShowPreview(false);
       reload();
     } catch (error) {
       onError(error as Error);
@@ -324,6 +341,46 @@ export function ReportsView({
             </button>
           )}
         </div>
+
+        {aiEnabled && showPreview && preview && (
+          <div class="preview">
+            <div class="preview-head">
+              <strong>{zh ? '即将发送以下内容' : 'About to send'}</strong>
+              <span class="muted small">
+                {preview.level} · {preview.bytes} bytes
+                {preview.endpoint ? ` → ${preview.model}` : ''}
+              </span>
+            </div>
+            {!preview.aiEnabled ? (
+              <p class="muted small">
+                {zh
+                  ? '没有配置 AI key，因此不会发送任何内容。'
+                  : 'No AI key is configured, so nothing would be sent.'}
+              </p>
+            ) : (
+              <p class="muted small">
+                {zh ? '将发送到 ' : 'Sending to '}
+                <code>{preview.endpoint}</code>
+              </p>
+            )}
+            <pre class="report-body">{JSON.stringify(preview.payload, null, 2)}</pre>
+            <div class="button-row">
+              <button
+                type="button"
+                disabled={busy || !preview.aiEnabled}
+                onClick={() => void generate(false, true)}
+              >
+                {zh ? '确认并发送' : 'Send it'}
+              </button>
+              <button type="button" onClick={() => setShowPreview(false)}>
+                {zh ? '取消' : 'Cancel'}
+              </button>
+              <button type="button" onClick={() => void generate(true)}>
+                {zh ? '改用本地生成' : 'Use the local report instead'}
+              </button>
+            </div>
+          </div>
+        )}
       </Card>
 
       <Card title={zh ? '历史报告' : 'Earlier reports'}>

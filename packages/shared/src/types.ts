@@ -322,3 +322,29 @@ export interface CollectorStatus {
     inputActivity: boolean;
   };
 }
+
+/**
+ * How much detail an AI payload carries.
+ *
+ *   * `app`     — application names, categories, durations and focus factors.
+ *                 No window titles, no page or project names.
+ *   * `context` — adds the *normalised* window context: which project, file or
+ *                 site the time went to, after titlenorm.ts has stripped the
+ *                 noise. Still never the raw window title.
+ *
+ * Your journal is included at either level, because you wrote it for the report.
+ *
+ * There is deliberately no "send everything" level. Every additional field here
+ * has to be justified by a report that is meaningfully better with it.
+ */
+export type RedactionLevel = 'app' | 'context';
+
+/**
+ * Normalise a possibly hand-edited or legacy setting.
+ *
+ * Falls back to the *narrowest* level rather than throwing, so a typo can never
+ * widen what leaves the machine.
+ */
+export function parseRedactionLevel(value: unknown): RedactionLevel {
+  return value === 'context' ? 'context' : 'app';
+}

@@ -34,7 +34,7 @@ import {
   toPublicSettings,
   type AttentioConfig,
 } from '@attentio/daemon';
-import { API_PREFIX, categoryLabel, humanBytes, humanDuration, clockTime, CATEGORY_ORDER, categoryMeta } from '@attentio/shared';
+import { API_PREFIX, dayKey, categoryLabel, humanBytes, humanDuration, clockTime, CATEGORY_ORDER, categoryMeta } from '@attentio/shared';
 import type { CategoryRule, DayStats } from '@attentio/shared';
 
 import {
@@ -266,7 +266,7 @@ async function cmdStart(args: Args): Promise<number> {
 
   // Wire report generation so the HTTP API can produce reports too.
   setReportGenerator(async (request) => {
-    const day = request.day ?? new Date().toISOString().slice(0, 10);
+    const day = request.day ?? dayKey(Date.now());
     const dayData = computeDay({ db, config }, { day });
     const journal = db.listJournal({
       from: Date.parse(`${day}T00:00:00`),
@@ -546,25 +546,77 @@ async function cmdToday(args: Args): Promise<number> {
 async function cmdReport(args: Args): Promise<number> {
   const { config, db } = await openContext(args);
   try {
-    const day = flagString(args, 'day') ?? new Date().toISOString().slice(0, 10);
+    const day = flagString(args, 'day') ?? dayKey(Date.now());
     const locale = localeOf(args, config);
     const response = computeDay({ db, config }, { day });
     const anchor = Date.parse(`${day}T00:00:00`);
     const journal = db.listJournal({ from: anchor, to: anchor + 86_400_000 });
 
-    const useAi = flagBool(args, 'ai');
-    if (flagBool(args, 'payload')) {
+    const payload = buildRedactedPayload(response.stats, journal, {
+      level: config.ai.redaction,
+      locale,
+      includeJournal: true,
+    });
+    const payloadText = JSON.stringify(payload, null, 2);
+    const payloadBytes = Buffer.byteLength(payloadText, 'utf8');
+    const endpoint = `${config.ai.baseUrl.replace(/\/+$/, '')}/chat/completions`;
+    const providerReady = config.ai.enabled && config.ai.apiKey.length > 0;
+
+    // Show exactly what would leave, then stop. This is the check that makes
+    // "we redact before sending" something a user can verify instead of believe.
+    if (flagBool(args, 'preview') || flagBool(args, 'payload')) {
+      console.log(heading(locale === 'zh' ? '将要发送的内容' : 'What would be sent'));
       console.log(
-        JSON.stringify(
-          buildRedactedPayload(response.stats, journal, {
-            level: config.ai.redaction,
-            locale,
-          }),
-          null,
-          2,
+        style.gray(
+          `  ${locale === 'zh' ? '脱敏级别' : 'redaction'} ${config.ai.redaction} · ${payloadBytes} bytes · ${config.ai.model}`,
         ),
       );
+      console.log(
+        style.gray(
+          `  → ${providerReady ? endpoint : locale === 'zh' ? '(未配置 AI，不会发送任何内容)' : '(no AI configured — nothing would be sent)'}`,
+        ),
+      );
+      console.log('');
+      console.log(payloadText);
       return 0;
+    }
+
+    // Sending is opt-in per invocation. A report that quietly uploaded your day
+    // because a key happened to be sitting in the config would be a betrayal of
+    // the promise this tool is built on, so `--ai` is required and the payload
+    // is shown first unless `--send` is passed.
+    let useAi = flagBool(args, 'ai');
+    if (useAi && !providerReady) {
+      console.log(
+        warn(locale === 'zh' ? '没有配置 AI key，改用本地报告。' : 'No AI key configured — using the offline report.'),
+      );
+      useAi = false;
+    }
+    if (useAi && !flagBool(args, 'send')) {
+      console.log(heading(locale === 'zh' ? '即将发送以下内容' : 'About to send'));
+      console.log(
+        style.gray(`  ${config.ai.redaction} · ${payloadBytes} bytes · → ${endpoint} · ${config.ai.model}`),
+      );
+      console.log('');
+      console.log(payloadText.length > 4000 ? `${payloadText.slice(0, 4000)}\n… (${payloadBytes} bytes total)` : payloadText);
+      console.log('');
+      if (process.stdin.isTTY) {
+        const answer = await prompt(`Send this to ${config.ai.model}? [y/N] `);
+        if (!/^y(es)?$/i.test(answer.trim())) {
+          console.log(warn(locale === 'zh' ? '已取消，未发送任何内容。' : 'Cancelled — nothing was sent.'));
+          useAi = false;
+        }
+      } else {
+        // Non-interactive: never assume yes.
+        console.log(
+          warn(
+            locale === 'zh'
+              ? '当前不是交互终端，因此没有发送。确认上面的内容后加 --send 重试。'
+              : 'Not a terminal, so nothing was sent. Re-run with --send once the payload above looks right.',
+          ),
+        );
+        useAi = false;
+      }
     }
 
     const outcome = await generateNarrative({
@@ -1179,9 +1231,22 @@ async function main(): Promise<number> {
   }
 }
 
-// `createInterface` is imported so the future interactive mode has a stable
-// import site; keep the reference to satisfy the bundler's tree shaking.
-void createInterface;
+/**
+ * Ask a question on the terminal.
+ *
+ * Only ever called when stdin is a TTY, so a piped or scheduled run can never
+ * end up blocking on a prompt nobody will answer.
+ */
+function prompt(question: string): Promise<string> {
+  const rl = createInterface({ input: process.stdin, output: process.stdout });
+  return new Promise((resolve) => {
+    rl.question(question, (answer) => {
+      rl.close();
+      resolve(answer);
+    });
+  });
+}
+
 void info;
 
 main()
