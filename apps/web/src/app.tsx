@@ -6,7 +6,7 @@
  * would be more machinery than the problem has.
  */
 
-import { useCallback, useEffect, useMemo, useRef, useState } from 'preact/hooks';
+import { useCallback, useEffect, useMemo, useState } from 'preact/hooks';
 
 import { humanDuration } from '@attentio/shared';
 import type {
@@ -27,7 +27,7 @@ import { api, ApiError, getToken, setToken, subscribe } from './api.ts';
 import { JournalView, ReportsView, SettingsView, TasksView } from './capture.tsx';
 import { Pet, type Skin } from './pet.tsx';
 import { AppsView, FocusView, TimelineView, TodayView, toDayKey } from './views.tsx';
-import { Card, ErrorNote, Spinner } from './ui.tsx';
+import { Card, ErrorNote, ReminderStack, Spinner, type Reminder } from './ui.tsx';
 
 type Tab = 'today' | 'timeline' | 'apps' | 'focus' | 'tasks' | 'journal' | 'reports' | 'settings';
 
@@ -148,20 +148,84 @@ export function App() {
     };
   }, [tab, day, reloadKey]);
 
+  // Reminders that have arrived and not been dismissed. Kept in memory rather
+  // than storage: a reminder is about *now*, and one that reappears after a reload
+  // an hour later is a bug the user cannot get rid of.
+  const [reminders, setReminders] = useState<Reminder[]>([]);
+  const showReminder = useCallback((reminder: Reminder) => {
+    setReminders((current) =>
+      // The daemon may retry, and SSE reconnects replay nothing, but a duplicate
+      // that slips through must not stack up visually.
+      current.some((existing) => existing.id === reminder.id) ? current : [...current, reminder],
+    );
+  }, []);
+  const dismissReminder = useCallback((id: string) => {
+    setReminders((current) => current.filter((reminder) => reminder.id !== id));
+  }, []);
+  const completeReminder = useCallback(
+    (taskId: number) => {
+      setReminders((current) => current.filter((reminder) => reminder.taskId !== taskId));
+      void api
+        .updateTask(taskId, { status: 'done' })
+        .then(() => {
+          setReloadKey((key) => key + 1);
+        })
+        .catch(() => undefined);
+    },
+    [],
+  );
+
   // ---- live stream --------------------------------------------------------
   useEffect(() => {
     const stop = subscribe(
       (event: SseEvent) => {
-        if (event.type === 'live') setLive(event.status);
-        else if (event.type === 'day') reload();
-        else if (event.type === 'reminder') {
-          notify(event.message);
+        switch (event.type) {
+          case 'live':
+            setLive(event.status);
+            break;
+
+          case 'day':
+            reload();
+            break;
+
+          case 'task':
+            // A task can be created from the CLI, from a phone, or by the parser
+            // running somewhere else. Without this the list on screen silently
+            // disagrees with the database, which is worse than a visible reload.
+            setReloadKey((key) => key + 1);
+            // Completing a task elsewhere should clear its reminder here too.
+            if (event.action === 'completed' || event.action === 'deleted') {
+              setReminders((current) =>
+                current.filter((reminder) => reminder.taskId !== event.task.id),
+              );
+            }
+            break;
+
+          case 'report':
+            // The automatic daily report arrives with no user action, so this is
+            // the only way the reports tab learns about it.
+            setReloadKey((key) => key + 1);
+            break;
+
+          case 'reminder':
+            // Both paths, deliberately. The in-page stack is the one that is
+            // guaranteed to be seen; the OS notification is what reaches the user
+            // when this tab is in the background, which is the common case for a
+            // reminder.
+            showReminder({
+              id: `${event.task.id}-${event.at}`,
+              message: event.message,
+              taskId: event.task.id,
+              ...(event.task.dueAt != null ? { dueAt: event.task.dueAt } : {}),
+            });
+            notify('Attentio', event.message);
+            break;
         }
       },
       setConnection,
     );
     return stop;
-  }, [reload, token]);
+  }, [reload, token, showReminder]);
 
   // Poll live status even without SSE: on a phone the stream can be killed by
   // the OS when the tab is backgrounded, and a stale "focused" badge is worse
@@ -192,6 +256,8 @@ export function App() {
     setLocale(next);
     void api.updateSettings({ ui: { locale: next } }).catch(() => undefined);
   };
+
+  const notification = useNotificationPermission();
 
   const zh = locale === 'zh';
   const tabs = useMemo(() => TABS.map((tab_) => ({ ...tab_, text: zh ? tab_.labelZh : tab_.label })), [zh]);
@@ -243,6 +309,12 @@ export function App() {
           )}
         </div>
       )}
+
+      <ReminderStack
+        reminders={reminders}
+        onDismiss={dismissReminder}
+        onComplete={completeReminder}
+      />
 
       <main>
         {tab === 'today' &&
@@ -325,6 +397,8 @@ export function App() {
             <SettingsView
               settings={settings}
               locale={locale}
+              notifications={notification.state}
+              onRequestNotifications={() => void notification.request()}
               onLocale={setLocaleAndPersist}
               reload={reload}
               onError={setError}
@@ -426,19 +500,60 @@ function hashTab(): string | null {
   return match?.[1] ?? null;
 }
 
-/** Reminders are announced through the browser when the tab is hidden. */
-function notify(message: string): void {
-  if (typeof Notification === 'undefined') return;
-  if (Notification.permission === 'granted') {
-    new Notification('Attentio', { body: message });
+/**
+ * Send a reminder to the operating system, if it will take one.
+ *
+ * Best-effort by design: every failure mode here (no API, permission denied,
+ * permission never asked, an insecure origin) is normal, and none of them should
+ * affect whether the user is told. That is `ReminderStack`'s job.
+ *
+ * The tab being visible is part of the decision: showing an OS notification for
+ * something already on screen is noise, and some browsers suppress it anyway.
+ */
+function notify(title: string, body: string): boolean {
+  if (typeof Notification === 'undefined') return false;
+  if (Notification.permission !== 'granted') return false;
+  if (typeof document !== 'undefined' && document.visibilityState === 'visible') return false;
+  try {
+    new Notification(title, { body, tag: 'attentio-reminder' });
+    return true;
+  } catch {
+    // Some platforms throw on construction rather than resolving a permission.
+    return false;
   }
 }
 
-export function useNotificationPermission(): () => void {
-  const asked = useRef(false);
-  return useCallback(() => {
-    if (asked.current || typeof Notification === 'undefined') return;
-    asked.current = true;
-    void Notification.requestPermission();
+export type NotificationState = 'unsupported' | 'default' | 'granted' | 'denied';
+
+/**
+ * Notification permission, requested only when the user asks for it.
+ *
+ * Asking on load is the pattern that trains people to click "block": the request
+ * arrives with no context, from a page they have not decided to trust yet. Here
+ * the button that triggers it says what it is for and what happens if you say no
+ * (reminders stay in the page).
+ */
+export function useNotificationPermission(): {
+  state: NotificationState;
+  request: () => Promise<NotificationState>;
+} {
+  const [state, setState] = useState<NotificationState>(() =>
+    typeof Notification === 'undefined' ? 'unsupported' : Notification.permission,
+  );
+
+  const request = useCallback(async (): Promise<NotificationState> => {
+    if (typeof Notification === 'undefined') return 'unsupported';
+    try {
+      const result = await Notification.requestPermission();
+      setState(result);
+      return result;
+    } catch {
+      // Safari < 16 returns undefined from requestPermission rather than a string.
+      const current = Notification.permission;
+      setState(current);
+      return current;
+    }
   }, []);
+
+  return { state, request };
 }

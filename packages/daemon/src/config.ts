@@ -27,15 +27,23 @@ export interface AiConfig {
   baseUrl: string;
   apiKey: string;
   model: string;
-  /**
-   * How much detail may leave the machine when a report is generated.
-   *   app     — only app names, categories and timings (safest)
-   *   context — adds project / page / document names
-   *   full    — adds raw window titles (most useful, most revealing)
-   */
+  /** How much detail may leave the machine when a report is generated. */
   redaction: RedactionLevel;
-  /** Local hour (0-23) for the automatic daily report. -1 disables it. */
+  /**
+   * Local hour (0-23) for the automatic daily report, or -1 to disable it.
+   *
+   * The automatic report is written locally by default. It uses the model only
+   * when `autoReports` is also true, because an unattended report cannot show
+   * you its payload first, and sending is otherwise opt-in per invocation.
+   */
   dailyReportHour: number;
+  /**
+   * Allow the *automatic* daily report to call the model.
+   *
+   * Separate from `enabled` on purpose. `enabled` means "you may use AI when I
+   * ask"; this means "and you may do it while I am not looking". Default false.
+   */
+  autoReports: boolean;
   language: 'en' | 'zh';
   maxTokens: number;
   temperature: number;
@@ -54,6 +62,11 @@ export interface TrackingConfig {
   captureTitles: boolean;
   excludeApps: string[];
   excludeTitlePatterns: string[];
+  /**
+   * Minutes before a task's due time to remind about it. 0 reminds exactly when
+   * it comes due, which is too late to be useful for most things.
+   */
+  reminderLeadMin: number;
 }
 
 export interface FocusConfig {
@@ -106,6 +119,7 @@ export function defaultConfig(): AttentioConfig {
       model: 'gpt-4o-mini',
       redaction: 'app' satisfies RedactionLevel,
       dailyReportHour: 21,
+      autoReports: false,
       language: 'en',
       maxTokens: 1200,
       temperature: 0.3,
@@ -136,6 +150,7 @@ export function defaultConfig(): AttentioConfig {
       // Title patterns are for things a user adds deliberately, e.g. an internal
       // tool whose window title names a client.
       excludeTitlePatterns: [],
+      reminderLeadMin: 5,
     },
     focus: {
       preset: 'balanced',
@@ -360,6 +375,7 @@ export function toPublicSettings(config: AttentioConfig) {
       hasApiKey: config.ai.apiKey.length > 0,
       redaction: config.ai.redaction,
       dailyReportHour: config.ai.dailyReportHour,
+      autoReports: config.ai.autoReports,
       language: config.ai.language,
     },
     tracking: {

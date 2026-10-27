@@ -35,6 +35,7 @@ import type {
   Platform,
   PublicSettings,
   ReportPreviewResponse,
+  ReportRecord,
   SseEvent,
   TaskStatus,
   TasksQuery,
@@ -363,7 +364,12 @@ export async function createAttentioServer(options: ServerOptions): Promise<Atte
           'Run the daemon through the `attentio` CLI to enable reports.',
         );
       }
-      sendJson(res, 200, await generator(body));
+      // Broadcast as well as return. The automatic daily report is generated with
+      // nobody waiting on this response, so a client that only learned about new
+      // reports from its own request would never see it.
+      const record = await generator(body);
+      broadcast({ type: 'report', at: Date.now(), report: record });
+      sendJson(res, 200, record);
       return;
     }
 
@@ -423,12 +429,23 @@ export async function createAttentioServer(options: ServerOptions): Promise<Atte
         }
         const task = db.updateTask(id, patch);
         if (!task) throw new HttpError(404, 'not_found', `No task with id ${id}`);
-        broadcast({ type: 'task', at: Date.now(), action: 'updated', task });
+        broadcast({
+          type: 'task',
+          at: Date.now(),
+          // Distinct from 'updated' so a client can react to the transition rather
+          // than inferring it. The union declared this action from the start.
+          action: patch['status'] === 'done' ? 'completed' : 'updated',
+          task,
+        });
         sendJson(res, 200, { task });
         return;
       }
       if (method === 'DELETE') {
+        // Read it first: the event has to carry what was removed, because after
+        // the delete there is nothing left to describe.
+        const removed = db.getTask(id);
         if (!db.deleteTask(id)) throw new HttpError(404, 'not_found', `No task with id ${id}`);
+        if (removed) broadcast({ type: 'task', at: Date.now(), action: 'deleted', task: removed });
         sendJson(res, 200, { ok: true });
         return;
       }
@@ -711,7 +728,11 @@ export function isPrivateIPv4(address: string): boolean {
 }
 
 /** Optional hook installed by the CLI so reports can use an LLM. */
-export type ReportGenerator = (request: GenerateReportRequest) => Promise<unknown>;
+// Typed as ReportRecord rather than unknown: the server now broadcasts the result
+// as a `report` event, and a client receiving that event has to be able to type it.
+export type ReportGenerator = (
+  request: GenerateReportRequest,
+) => Promise<ReportRecord>;
 let reportGenerator: ReportGenerator | null = null;
 
 export function setReportGenerator(generator: ReportGenerator | null): void {

@@ -161,6 +161,76 @@ input[type='checkbox'] {
   min-height: 60vh;
 }
 
+/* ---------------------------------------------------------------------------
+   Reminders
+
+   Fixed to the bottom so they survive scrolling, but above the tab bar: a
+   reminder that covers the navigation while it waits to be dismissed is a
+   reminder the user resents. Sits in the normal flow on a wide screen where
+   there is room for it.
+   --------------------------------------------------------------------------- */
+.reminders {
+  position: fixed;
+  left: 50%;
+  bottom: calc(64px + env(safe-area-inset-bottom, 0px));
+  transform: translateX(-50%);
+  z-index: 40;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  width: min(560px, calc(100vw - 2 * var(--gap)));
+  pointer-events: none;
+}
+
+.reminder {
+  pointer-events: auto;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 12px;
+  border-radius: var(--radius);
+  background: var(--surface);
+  border: 1px solid var(--border);
+  box-shadow: 0 6px 24px rgb(0 0 0 / 18%);
+  animation: reminder-in 180ms ease-out;
+}
+
+@keyframes reminder-in {
+  from {
+    opacity: 0;
+    transform: translateY(6px);
+  }
+}
+
+.reminder-dot {
+  flex: none;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--warn, #d9a441);
+}
+
+.reminder-body {
+  flex: 1;
+  min-width: 0;
+  /* A long task title must wrap rather than push the buttons off screen. */
+  overflow-wrap: anywhere;
+}
+
+.reminder-actions {
+  flex: none;
+  display: flex;
+  gap: 6px;
+}
+
+@media (min-width: 900px) {
+  .reminders {
+    left: auto;
+    right: var(--gap);
+    transform: none;
+  }
+}
+
 .topbar {
   position: sticky;
   top: 0;
@@ -1123,6 +1193,10 @@ main {
 .scale-160 { --font-scale: 1.6; }
 
 @media (prefers-reduced-motion: reduce) {
+  .reminder {
+    animation: none;
+  }
+
   *,
   *::before,
   *::after {

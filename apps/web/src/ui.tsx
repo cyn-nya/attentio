@@ -9,7 +9,7 @@
 
 import type { ComponentChildren, JSX } from 'preact';
 
-import { categoryColor, categoryLabel, humanDuration, percent } from '@attentio/shared';
+import { categoryColor, categoryLabel, clockTime, humanDuration, percent } from '@attentio/shared';
 
 export function Card({
   title,
@@ -248,6 +248,68 @@ export function Legend({ entries }: { entries: { label: string; colour: string }
           <span class="dot" style={{ background: entry.colour }} />
           {entry.label}
         </span>
+      ))}
+    </div>
+  );
+}
+
+/** A reminder that has arrived and not been dismissed yet. */
+export interface Reminder {
+  id: string;
+  message: string;
+  taskId?: number;
+  dueAt?: number;
+}
+
+/**
+ * Reminders, shown in the page.
+ *
+ * The browser notification is the *nice* path, but it is unreliable in ways the
+ * app cannot control: permission may be denied, Chrome on Android requires the
+ * PWA to be installed, iOS Safari only delivers them from an installed app, and a
+ * desktop user who ignored the permission prompt gets nothing at all. A reminder
+ * that silently disappears is worse than no reminder, because the user believes
+ * they will be told.
+ *
+ * So the durable path is here, in the DOM, and the OS notification is a bonus.
+ */
+export function ReminderStack(props: {
+  reminders: Reminder[];
+  onDismiss: (id: string) => void;
+  onComplete: (taskId: number) => void;
+}) {
+  if (props.reminders.length === 0) return null;
+  return (
+    <div class="reminders" role="status" aria-live="polite">
+      {props.reminders.map((reminder) => (
+        <div class="reminder" key={reminder.id}>
+          <span class="reminder-dot" aria-hidden="true" />
+          <div class="reminder-body">
+            <strong>{reminder.message}</strong>
+            {reminder.dueAt !== undefined && (
+              <span class="muted small"> · due {clockTime(reminder.dueAt)}</span>
+            )}
+          </div>
+          <div class="reminder-actions">
+            {reminder.taskId !== undefined && (
+              <button
+                type="button"
+                class="small"
+                onClick={() => props.onComplete(reminder.taskId as number)}
+              >
+                Done
+              </button>
+            )}
+            <button
+              type="button"
+              class="small ghost"
+              aria-label="Dismiss reminder"
+              onClick={() => props.onDismiss(reminder.id)}
+            >
+              ×
+            </button>
+          </div>
+        </div>
       ))}
     </div>
   );

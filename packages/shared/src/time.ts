@@ -119,6 +119,27 @@ export function logicalDayBounds(key: string, dayStartHour = 4): { start: number
   return { start, end: start + DAY };
 }
 
+/**
+ * The next time the local clock reads `hour`:00, strictly in the future.
+ *
+ * A daily timer cannot be a `setInterval(24h)`: the interval drifts across DST
+ * changes and a machine that sleeps through 21:00 would keep firing an hour late
+ * forever. Recomputing the wall-clock target after each fire keeps "21:00" meaning
+ * 21:00. `hour` may exceed 23 to mean "tomorrow at hour-24", which is how a report
+ * for a day that just ended gets scheduled before midnight.
+ */
+export function nextLocalHour(now: number, hour: number): number {
+  const target = new Date(now);
+  target.setHours(hour, 0, 0, 0);
+  if (target.getTime() <= now) {
+    // setDate handles month and year rollover, and re-normalises across a DST
+    // boundary where 21:00 may not exist on one particular date.
+    target.setDate(target.getDate() + 1);
+    target.setHours(hour % 24, 0, 0, 0);
+  }
+  return target.getTime();
+}
+
 export function isoWeekKey(ts: number): string {
   const d = new Date(ts);
   d.setHours(0, 0, 0, 0);

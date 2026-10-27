@@ -19,6 +19,8 @@ import type {
 } from '@attentio/shared';
 
 import { api } from './api.ts';
+// Type-only, so this does not create a cycle at runtime.
+import type { NotificationState } from './app.tsx';
 import { Card, Empty, ErrorNote, Spinner } from './ui.tsx';
 
 type Locale = 'en' | 'zh';
@@ -424,6 +426,8 @@ export function SettingsView({
   onToken,
   connection,
   version,
+  notifications,
+  onRequestNotifications,
 }: {
   settings: PublicSettings;
   locale: Locale;
@@ -434,6 +438,8 @@ export function SettingsView({
   onToken: (token: string) => void;
   connection: 'open' | 'closed';
   version: string;
+  notifications: NotificationState;
+  onRequestNotifications: () => void;
 }) {
   const zh = locale === 'zh';
   const [draftToken, setDraftToken] = useState(token);
@@ -469,8 +475,53 @@ export function SettingsView({
     }
   };
 
+  // What the user needs to know before deciding: what the button does, and what
+  // they lose by declining. A permission prompt with no context gets blocked, and
+  // a blocked prompt cannot be asked again.
+  const notificationCopy: Record<NotificationState, { label: string; detail: string; button: string | null }> = {
+    unsupported: {
+      label: zh ? '浏览器通知' : 'Browser notifications',
+      detail: zh
+        ? '这个浏览器不支持系统通知。提醒仍会显示在页面顶部。'
+        : 'This browser has no notification API. Reminders still appear at the top of the page.',
+      button: null,
+    },
+    default: {
+      label: zh ? '浏览器通知' : 'Browser notifications',
+      detail: zh
+        ? '当前未授权。待办到点时会显示在页面顶部；授权后，切到别的程序或锁屏也能收到系统通知。'
+        : 'Not granted yet. Reminders already appear at the top of this page; granting this makes them reach you when the tab is in the background or the screen is locked.',
+      button: zh ? '开启系统通知' : 'Enable notifications',
+    },
+    granted: {
+      label: zh ? '浏览器通知' : 'Browser notifications',
+      detail: zh ? '已开启。提醒会同时显示在页面顶部和系统通知里。' : 'On. Reminders appear both in the page and as system notifications.',
+      button: null,
+    },
+    denied: {
+      label: zh ? '浏览器通知' : 'Browser notifications',
+      detail: zh
+        ? '已被拒绝。浏览器不允许网页再次询问，需要在地址栏的站点设置里手动改。提醒仍会显示在页面顶部。'
+        : 'Denied. The browser will not let a page ask again — change it in the site settings from the address bar. Reminders still appear at the top of the page.',
+      button: null,
+    },
+  };
+  const notice = notificationCopy[notifications];
+
   return (
     <>
+      <Card title={zh ? '提醒' : 'Reminders'}>
+        <div class="field">
+          <span>{notice.label}</span>
+          <p class="muted small">{notice.detail}</p>
+          {notice.button && (
+            <button type="button" class="small" onClick={onRequestNotifications}>
+              {notice.button}
+            </button>
+          )}
+        </div>
+      </Card>
+
       <Card title={zh ? '外观' : 'Appearance'}>
         <label class="field">
           <span>{zh ? '语言' : 'Language'}</span>

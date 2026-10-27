@@ -217,10 +217,19 @@ export interface PublicSettings {
     baseUrl: string;
     model: string;
     hasApiKey: boolean;
-    /** `app` sends only app + category, `context` adds project/page, `full` adds raw titles. */
-    redaction: 'app' | 'context' | 'full';
-    /** Local hour (0-23) at which the daily report is generated. */
+    /**
+     * What a model call may include. `app` sends app names, categories and
+     * timings; `context` adds project, page and document names.
+     *
+     * There is deliberately no level that sends raw window titles: the title is
+     * reduced by `titlenorm.ts` before it is ever stored, so a "full" level
+     * could only promise something the pipeline has already discarded.
+     */
+    redaction: RedactionLevel;
+    /** Local hour (0-23) at which the daily report is generated, or -1 for off. */
     dailyReportHour: number;
+    /** Whether the automatic daily report may call the model without being asked. */
+    autoReports: boolean;
     language: 'en' | 'zh';
   };
   tracking: {

@@ -34,8 +34,8 @@ import {
   toPublicSettings,
   type AttentioConfig,
 } from '@attentio/daemon';
-import { API_PREFIX, dayKey, categoryLabel, humanBytes, humanDuration, clockTime, CATEGORY_ORDER, categoryMeta } from '@attentio/shared';
-import type { CategoryRule, DayStats } from '@attentio/shared';
+import { API_PREFIX, dayKey, nextLocalHour, categoryLabel, humanBytes, humanDuration, clockTime, CATEGORY_ORDER, categoryMeta } from '@attentio/shared';
+import type { CategoryRule, DayStats, ReportKind } from '@attentio/shared';
 
 import {
   bar,
@@ -290,17 +290,28 @@ async function cmdStart(args: Args): Promise<number> {
     Boolean(explicitPort),
   );
 
-  // Wire report generation so the HTTP API can produce reports too.
-  setReportGenerator(async (request) => {
+  /**
+   * Produce and store one report.
+   *
+   * Shared by the HTTP API, the CLI and the automatic daily timer so there is one
+   * definition of what a report contains. `allowAi` is the caller's consent:
+   * a person who just pressed a button can give it, a timer cannot.
+   */
+  const generateAndSaveReport = async (request: {
+    day?: string;
+    kind?: ReportKind;
+    statsOnly?: boolean;
+    instruction?: string;
+    allowAi: boolean;
+  }): Promise<ReturnType<typeof db.saveReport>> => {
     const day = request.day ?? dayKey(Date.now());
+    const anchor = Date.parse(`${day}T00:00:00`);
     const dayData = computeDay({ db, config }, { day });
-    const journal = db.listJournal({
-      from: Date.parse(`${day}T00:00:00`),
-      to: Date.parse(`${day}T00:00:00`) + 86_400_000,
-    });
+    const journal = db.listJournal({ from: anchor, to: anchor + 86_400_000 });
+    const modelReady = config.ai.enabled && config.ai.apiKey.length > 0;
     const narrative = await generateNarrative({
       ai: {
-        enabled: config.ai.enabled && config.ai.apiKey.length > 0,
+        enabled: request.allowAi && modelReady,
         baseUrl: config.ai.baseUrl,
         apiKey: config.ai.apiKey,
         model: config.ai.model,
@@ -312,7 +323,7 @@ async function cmdStart(args: Args): Promise<number> {
       statsOnly: request.statsOnly === true,
       ...(request.instruction ? { instruction: request.instruction } : {}),
     });
-    const record = db.saveReport(
+    return db.saveReport(
       {
         deviceId: config.deviceId,
         day,
@@ -323,10 +334,24 @@ async function cmdStart(args: Args): Promise<number> {
         createdAt: Date.now(),
         redacted: true,
       },
+      // Replace rather than append: regenerating a day's report should update it,
+      // not accumulate near-identical copies from every timer tick.
       { replace: true },
     );
-    return record;
-  });
+  };
+
+  // Wire report generation so the HTTP API can produce reports too. A request over
+  // the API carries the same consent as pressing the button: the payload preview
+  // has already been shown and confirmed by whoever is at the other end.
+  setReportGenerator((request) =>
+    generateAndSaveReport({
+      ...(request.day ? { day: request.day } : {}),
+      ...(request.kind ? { kind: request.kind } : {}),
+      ...(request.statsOnly !== undefined ? { statsOnly: request.statsOnly } : {}),
+      ...(request.instruction ? { instruction: request.instruction } : {}),
+      allowAi: true,
+    }),
+  );
 
   await engine.start();
 
@@ -337,6 +362,8 @@ async function cmdStart(args: Args): Promise<number> {
   const publicUrls = server.lanUrls.filter((url) => !isPrivateUrl(url));
   const reachable = server.lanUrls.filter(isPrivateUrl);
   const label = (text: string) => style.bold(text);
+  const nextReport =
+    config.ai.dailyReportHour >= 0 ? nextLocalHour(Date.now(), config.ai.dailyReportHour) : null;
 
   console.log(
     [
@@ -372,6 +399,16 @@ async function cmdStart(args: Args): Promise<number> {
         ['collector', `${status.health === 'ok' ? style.green(status.health) : style.yellow(status.health)} ${style.gray(status.detail)}`],
         ['sampling', `${config.tracking.sampleIntervalMs} ms window · ${config.tracking.processIntervalMs} ms processes`],
         ['ai reports', config.ai.enabled ? style.green(`${config.ai.model} (redaction: ${config.ai.redaction})`) : style.gray('off — everything runs locally')],
+        [
+          'daily report',
+          nextReport === null
+            ? style.gray('off — set ai.dailyReportHour in config.json to enable')
+            : `${clockTime(nextReport)} ${
+                config.ai.enabled && config.ai.autoReports
+                  ? style.yellow('redacted summary sent to the model')
+                  : style.gray('written locally, nothing sent')
+              }`,
+        ],
       ]),
       '',
       style.gray('  Open the dashboard on this machine, or scan/enter the code on your phone.'),
@@ -394,25 +431,75 @@ async function cmdStart(args: Args): Promise<number> {
   }
 
   // Task reminders: a plain interval is enough, and it keeps working when the
-  // web UI is closed.
+  // web UI is closed. The lead time is what makes a reminder useful — being told
+  // exactly when something is due is being told too late.
+  const reminderLeadMs = Math.max(0, config.tracking.reminderLeadMin) * 60_000;
   const reminderTimer = setInterval(() => {
     const now = Date.now();
-    for (const task of db.dueReminders(now, 0)) {
-      console.log(`${style.yellow('⏰')} ${task.title} ${style.gray(`(due ${clockTime(task.dueAt ?? now)})`)}`);
+    for (const task of db.dueReminders(now, reminderLeadMs)) {
+      const due = task.dueAt ?? now;
+      const early = due - now;
+      console.log(
+        `${style.yellow('⏰')} ${task.title} ${style.gray(
+          early > 60_000 ? `(in ${humanDuration(early, { compact: true })}, due ${clockTime(due)})` : `(due ${clockTime(due)})`,
+        )}`,
+      );
       server.notify({
         type: 'reminder',
         at: now,
         task,
-        message: task.title,
+        message: early > 60_000 ? `${task.title} — in ${humanDuration(early, { compact: true })}` : task.title,
       });
+      // Stamping remindedAt is what stops this from firing again every 30 s; the
+      // query compares it against the due time, so moving a due date re-arms it.
       db.updateTask(task.id, { remindedAt: now });
     }
   }, 30_000);
+
+  /**
+   * The automatic daily report.
+   *
+   * Scheduled against the wall clock rather than a 24-hour interval: an interval
+   * drifts across DST and a laptop that sleeps through 21:00 would fire an hour
+   * late forever. `nextLocalHour` recomputes the target after every fire.
+   */
+  let dailyReportTimer: ReturnType<typeof setTimeout> | undefined;
+  const scheduleDailyReport = (): void => {
+    const hour = config.ai.dailyReportHour;
+    if (hour < 0) return;
+    const fireAt = nextLocalHour(Date.now(), hour);
+    dailyReportTimer = setTimeout(() => {
+      void (async () => {
+        try {
+          const day = dayKey(Date.now());
+          const record = await generateAndSaveReport({
+            day,
+            kind: 'daily',
+            // A timer cannot show you its payload, so it does not get to send one.
+            allowAi: config.ai.autoReports,
+          });
+          console.log(
+            `${ok('daily report')} ${day} ${style.gray(
+              `${record.model} · ${config.ai.autoReports && config.ai.enabled ? 'sent a redacted summary' : 'written locally'}`,
+            )}`,
+          );
+          server.notify({ type: 'report', at: Date.now(), report: record });
+        } catch (error) {
+          // A scheduled job must never take the daemon down with it.
+          console.log(warn(`daily report failed: ${(error as Error).message}`));
+        } finally {
+          scheduleDailyReport();
+        }
+      })();
+    }, Math.max(1000, fireAt - Date.now()));
+  };
+  scheduleDailyReport();
 
   await new Promise<void>((resolve) => {
     const shutdown = (signal: string): void => {
       console.log(`\n${style.gray(`${signal} received, flushing…`)}`);
       clearInterval(reminderTimer);
+      if (dailyReportTimer) clearTimeout(dailyReportTimer);
       void (async () => {
         await engine.stop();
         await server.close();

@@ -33,6 +33,7 @@
   "include": [
     "src/**/*.ts",
     "src/**/*.tsx",
+    "smoke/**/*.tsx",
     "vite.config.ts"
   ]
 }

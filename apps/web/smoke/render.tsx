@@ -25,6 +25,7 @@ import type {
 
 import { JournalView, ReportsView, SettingsView, TasksView } from '../src/capture.tsx';
 import { Pet, deriveMood } from '../src/pet.tsx';
+import { ReminderStack } from '../src/ui.tsx';
 import { AppsView, FocusView, TimelineView, TodayView } from '../src/views.tsx';
 
 // ---------------------------------------------------------------------------
@@ -80,33 +81,65 @@ const focusFactors: DayStats['focus']['factors'] = [
     detail: '72% of observed time had real input.',
   },
   { id: 'depth', label: 'Depth', labelZh: '深度', value: 0.61, weight: 0.45, contribution: 27.4, detail: '61% deep work.' },
-  { id: 'continuity', label: 'Continuity', labelZh: '连续性', value: 0.48, weight: 0.2, contribution: 9.6 },
-  { id: 'fragmentation', label: 'Fragmentation', labelZh: '碎片度', value: 0.5, weight: 0.15, contribution: 7.5 },
-  { id: 'coherence', label: 'Coherence', labelZh: '一致性', value: 0.66, weight: 0.1, contribution: 6.6 },
+  {
+    id: 'continuity',
+    label: 'Continuity',
+    labelZh: '连续性',
+    value: 0.48,
+    weight: 0.2,
+    contribution: 9.6,
+    detail: 'Longest unbroken stretch was 48 minutes.',
+  },
+  {
+    id: 'fragmentation',
+    label: 'Fragmentation',
+    labelZh: '碎片度',
+    value: 0.5,
+    weight: 0.15,
+    contribution: 7.5,
+    detail: '186 switches across 5.5 hours of engaged time.',
+  },
+  {
+    id: 'coherence',
+    label: 'Coherence',
+    labelZh: '一致性',
+    value: 0.66,
+    weight: 0.1,
+    contribution: 6.6,
+    detail: 'Deep work and learning made up most of the day.',
+  },
 ];
 
 const blocks: FocusBlock[] = [
   {
+    deviceId: 'local',
     start: base,
     end: base + 95 * 60_000,
     activeMs: 95 * 60_000,
+    score: 82,
     category: 'deep-work',
     label: 'Attentio',
     apps: ['VS Code', 'Windows Terminal'],
+    switchCount: 6,
     contexts: [{ context: 'attentio — engine.ts', ms: 3_600_000 }],
   },
   {
+    deviceId: 'local',
     start: base + 4 * HOUR,
     end: base + 4 * HOUR + 42 * 60_000,
     activeMs: 42 * 60_000,
+    score: 64,
     category: 'learning',
     label: 'Operating systems',
     apps: ['Chrome'],
+    switchCount: 11,
     contexts: [{ context: 'Lecture 12 — scheduling', ms: 2_400_000 }],
   },
 ];
 
 const stats: DayStats = {
+  // Matches the daemon's sentinel for "every paired device", which is what the
+  // dashboard asks for by default.
   deviceId: 'all',
   day: DAY,
   firstSeen: base,
@@ -128,8 +161,6 @@ const stats: DayStats = {
       cpuMs: 18 * 60_000,
       peakMemBytes: 2_100_000_000,
       switches: 74,
-      firstSeen: base,
-      lastSeen: base + 9 * HOUR,
       contexts: [
         { context: 'attentio — engine.ts', ms: 1.8 * HOUR },
         { context: 'attentio — server.ts', ms: 1.1 * HOUR },
@@ -143,8 +174,6 @@ const stats: DayStats = {
       cpuMs: 9 * 60_000,
       peakMemBytes: 3_400_000_000,
       switches: 68,
-      firstSeen: base,
-      lastSeen: base + 8 * HOUR,
       contexts: [{ context: 'MDN — EventSource', ms: 1_800_000 }],
     },
     {
@@ -155,8 +184,6 @@ const stats: DayStats = {
       cpuMs: 3 * 60_000,
       peakMemBytes: 700_000_000,
       switches: 33,
-      firstSeen: base,
-      lastSeen: base + 9 * HOUR,
       contexts: [],
     },
     {
@@ -167,24 +194,29 @@ const stats: DayStats = {
       cpuMs: 6 * 60_000,
       peakMemBytes: 1_200_000_000,
       switches: 11,
-      firstSeen: base + 7 * HOUR,
-      lastSeen: base + 8 * HOUR,
       contexts: [],
     },
   ],
   categories: [
-    { category: 'deep-work', ms: 3.2 * HOUR, share: 0.51, productivity: 1 },
-    { category: 'reference', ms: 1.1 * HOUR, share: 0.18, productivity: 0.5 },
-    { category: 'communication', ms: 0.6 * HOUR, share: 0.1, productivity: 0.3 },
-    { category: 'entertainment', ms: 0.4 * HOUR, share: 0.06, productivity: -0.8 },
+    { category: 'deep-work', ms: 3.2 * HOUR, share: 0.51 },
+    { category: 'reference', ms: 1.1 * HOUR, share: 0.18 },
+    { category: 'communication', ms: 0.6 * HOUR, share: 0.1 },
+    { category: 'entertainment', ms: 0.4 * HOUR, share: 0.06 },
   ],
-  hours: Array.from({ length: 24 }, (_, hour) => ({
-    hour,
-    foregroundMs: hour >= 9 && hour <= 18 ? (hour % 3 === 0 ? 42 * 60_000 : 18 * 60_000) : 0,
-    backgroundMs: hour >= 9 && hour <= 18 ? 5 * 60_000 : 0,
-    activeMs: hour >= 9 && hour <= 18 ? (hour % 3 === 0 ? 42 * 60_000 : 18 * 60_000) : 0,
-    topApp: hour >= 9 && hour <= 18 ? 'VS Code' : '',
-  })),
+  hours: Array.from({ length: 24 }, (_, hour) => {
+    const active = hour >= 9 && hour <= 18 ? (hour % 3 === 0 ? 42 * 60_000 : 18 * 60_000) : 0;
+    return {
+      hour,
+      foregroundMs: active,
+      backgroundMs: hour >= 9 && hour <= 18 ? 5 * 60_000 : 0,
+      activeMs: active,
+      // Roughly one switch every five engaged minutes, which is what a normal day
+      // produces. A fixture of zeros would render a flat chart and hide a broken
+      // sparkline, which is the one thing this test exists to catch.
+      switches: Math.round(active / 300_000),
+      topApp: hour >= 9 && hour <= 18 ? 'VS Code' : '',
+    };
+  }),
   blocks,
   focus: {
     score: 68,
@@ -319,9 +351,16 @@ const reports: ReportRecord[] = [
 ];
 
 const settings: PublicSettings = {
-  deviceId: 'd1',
-  deviceName: 'XDDDC (win32)',
-  ai: { enabled: true, model: 'gpt-4o-mini', baseUrl: 'https://api.openai.com/v1', redaction: 'app', dailyReportHour: 21, language: 'en' },
+  ai: {
+    enabled: true,
+    model: 'gpt-4o-mini',
+    baseUrl: 'https://api.openai.com/v1',
+    redaction: 'app',
+    dailyReportHour: 21,
+    autoReports: false,
+    hasApiKey: true,
+    language: 'en',
+  },
   tracking: {
     idleThresholdSec: 120,
     sampleIntervalMs: 1000,
@@ -337,8 +376,8 @@ const settings: PublicSettings = {
 };
 
 const live: LiveStatus = {
-  deviceId: 'd1',
-  deviceName: 'XDDDC',
+  deviceId: 'local',
+  deviceName: 'XDDDC (win32)',
   platform: 'win32',
   current: { app: 'VS Code', context: 'engine.ts', category: 'deep-work', since: Date.now() - 52 * 60_000 },
   away: false,
@@ -364,6 +403,14 @@ function expect(label: string, html: string, needles: string[]): void {
       failures++;
       console.error(`  ✖ ${label}: missing ${JSON.stringify(needle)}`);
     }
+  }
+}
+
+function expectThat(label: string, condition: boolean, detail = ''): void {
+  checks++;
+  if (!condition) {
+    failures++;
+    console.error(`  ✖ ${label}${detail ? ': ' + detail : ''}`);
   }
 }
 
@@ -466,9 +513,67 @@ console.log('attentio web render smoke test\n');
       onToken={noop}
       connection="open"
       version="0.1.0"
+      notifications="granted"
+      onRequestNotifications={noop}
     />,
   );
   expect('settings', html, ['Appearance', 'Focus weights', 'Privacy', 'attentio pair', '1password']);
+}
+
+// Every permission state must render something a person can act on. 'denied' is
+// the important one: the browser will not ask again, so the copy has to say so,
+// and the page has to remain the thing that delivers reminders.
+for (const state of ['unsupported', 'default', 'granted', 'denied'] as const) {
+  const html = render(
+    <SettingsView
+      settings={settings}
+      locale="en"
+      onLocale={noop}
+      reload={noop}
+      onError={noop}
+      token=""
+      onToken={noop}
+      connection="open"
+      version="0.1.0"
+      notifications={state}
+      onRequestNotifications={noop}
+    />,
+  );
+  const hasReminderCopy = html.includes('Browser notifications');
+  const offersButton = html.includes('Enable notifications');
+  expectThat(`notification state "${state}" has copy`, hasReminderCopy);
+  // Only the undecided state should offer the button; offering it after a denial
+  // would be a button that does nothing, which is worse than no button.
+  expectThat(
+    `notification state "${state}" button visibility`,
+    offersButton === (state === 'default'),
+    `button=${offersButton}, expected ${state === 'default'}`,
+  );
+  if (state === 'denied') {
+    expectThat('a denied permission says reminders still appear', html.includes('still appear'));
+  }
+}
+
+// The in-page stack is the delivery path that does not depend on any permission.
+{
+  const html = render(
+    <ReminderStack
+      reminders={[
+        { id: 't1', message: 'Submit the lab report', taskId: 7, dueAt: Date.now() + 300_000 },
+        { id: 't2', message: 'Call the bank' },
+      ]}
+      onDismiss={noop}
+      onComplete={noop}
+    />,
+  );
+  expect('reminders', html, ['Submit the lab report', 'Call the bank', 'Done', 'Dismiss reminder']);
+}
+
+// With nothing pending it must render nothing at all, rather than an empty box
+// that pushes the layout around on every page.
+{
+  const html = render(<ReminderStack reminders={[]} onDismiss={noop} onComplete={noop} />);
+  expectThat('an empty reminder stack renders nothing', html === '', `got ${JSON.stringify(html)}`);
 }
 
 // The pet's mood must come from the data, not from nothing.
