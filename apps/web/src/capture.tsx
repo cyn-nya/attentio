@@ -19,6 +19,7 @@ import type {
 } from '@attentio/shared';
 
 import { api } from './api.ts';
+import { speechLeavesDevice, useVoiceInput } from './voice.ts';
 // Type-only, so this does not create a cycle at runtime.
 import type { NotificationState } from './app.tsx';
 import { Card, Empty, ErrorNote, Spinner } from './ui.tsx';
@@ -44,6 +45,13 @@ export function TasksView({
   const [draft, setDraft] = useState('');
   const [busy, setBusy] = useState(false);
   const [showDone, setShowDone] = useState(false);
+  const [voiceHintSeen, setVoiceHintSeen] = useState(false);
+  // Voice appends to the same draft the keyboard writes to, so the parse preview,
+  // the buttons and the submit path are all shared. A spoken task and a typed one
+  // are the same task; only the input differs.
+  const voice = useVoiceInput(locale, (text) => {
+    setDraft((current) => (current ? `${current.trimEnd()} ${text.trim()}` : text.trim()));
+  });
   const parsed = draft.trim() ? parseTaskInput(draft) : null;
   const preview = parsed ? describeParsedTask(parsed, locale) : '';
 
@@ -112,7 +120,46 @@ export function TasksView({
         <button type="button" disabled={!parsed || busy} onClick={() => void submit()}>
           {zh ? '添加' : 'Add'}
         </button>
+        {voice.supported && (
+          <button
+            type="button"
+            class={`mic${voice.listening ? ' listening' : ''}`}
+            aria-label={voice.listening ? (zh ? '停止录音' : 'Stop listening') : zh ? '语音输入' : 'Speak a task'}
+            title={voice.listening ? (zh ? '停止录音' : 'Stop listening') : zh ? '语音输入' : 'Speak a task'}
+            onClick={() => {
+              setVoiceHintSeen(true);
+              if (voice.listening) voice.stop();
+              else voice.start();
+            }}
+          >
+            {voice.listening ? '■' : '🎙'}
+          </button>
+        )}
       </div>
+
+      {voice.listening && (
+        <p class="muted small voice-live">
+          <span class="pulse" />
+          {zh ? '正在听…' : 'Listening…'}
+          {voice.interim && <em> {voice.interim}</em>}
+        </p>
+      )}
+
+      {voice.error && <p class="overdue small">{voice.error}</p>}
+
+      {/*
+        The disclosure is not optional. In Chrome and Edge this audio goes to the
+        browser vendor's speech service, and a tool whose entire pitch is
+        "everything stays on your machine" cannot quietly make an exception for the
+        microphone. It is shown before the first use rather than in a settings page.
+      */}
+      {voice.supported && voiceHintSeen && !voice.listening && speechLeavesDevice() && (
+        <p class="muted small">
+          {zh
+            ? '语音用的是浏览器自带的识别服务：在 Chrome / Edge 里，录音会发送到浏览器厂商的服务器，不是本机处理。不想这样的话就用键盘输入。'
+            : 'Voice uses the browser\'s own speech service. In Chrome and Edge that sends your audio to the browser vendor to transcribe — it is not processed on this machine. Type instead if you would rather it not.'}
+        </p>
+      )}
       {preview && (
         <p class="muted small">
           {zh ? '识别为' : 'understood'}: <strong>{parsed?.title}</strong>

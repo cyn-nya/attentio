@@ -169,6 +169,33 @@ input[type='checkbox'] {
    reminder the user resents. Sits in the normal flow on a wide screen where
    there is room for it.
    --------------------------------------------------------------------------- */
+/* Voice capture. Sized to match the adjacent Add button so the row reads as
+   one control group rather than a button and a stray icon. */
+.quick-add .mic {
+  flex: none;
+  min-width: 44px;
+  padding: 0 10px;
+  font-size: 16px;
+  line-height: 1;
+}
+
+.quick-add .mic.listening {
+  background: var(--bad, #c0504d);
+  border-color: var(--bad, #c0504d);
+  color: #fff;
+}
+
+.voice-live {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.voice-live em {
+  font-style: normal;
+  opacity: 0.75;
+}
+
 .reminders {
   position: fixed;
   left: 50%;

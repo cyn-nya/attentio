@@ -40,22 +40,28 @@ and have no day column. The boundary is a *query* concern.
 **Why.** The schema, the API and the `reminder` SSE event exist; nothing fires
 them on a schedule.
 
-**Done when:** the daemon checks `db.dueReminders()` on an interval, emits
-`reminder` over SSE, the dashboard shows the notification (it already handles the
-event), the CLI prints it while `attentio start` runs, and `ai.dailyReportHour`
-produces one report a day without being asked.
+**Done.** The daemon checks `db.dueReminders()` every 30 seconds with a
+configurable lead (`tracking.reminderLeadMin`, default 5), emits `reminder` over
+SSE, the CLI prints it, the dashboard shows an in-page reminder stack plus a
+system notification when permitted, and `ai.dailyReportHour` writes one report a
+day — locally by default, or through the model when `ai.autoReports` is on.
 
-### 3. Natural-language input from voice
+Remaining work: a reminder for a task with no due date, and per-task lead times.
 
-**Why.** `taskparse.ts` already understands "finish the report tomorrow 6pm
-!high". Voice is the fastest way to capture a thought, and it is the feature most
-likely to make the task list get used at all.
+### 3. Voice input — **done**
 
-**Done when:** the dashboard has a hold-to-talk button using the Web Speech API
-(unavailable offline → button hidden, not broken), the transcript goes through
-the existing parser, and the user sees the parse preview before saving — the same
-contract as typing. No audio ever leaves the device beyond the browser's own
-speech service, and that is stated in the UI.
+The dashboard has a microphone button next to the task field. It uses the
+browser's `SpeechRecognition` API, appends the transcript to the same draft the
+keyboard writes to, and therefore goes through the identical `taskparse.ts` path
+and parse preview. The button is not rendered where the API is missing (Firefox),
+and the fact that Chromium streams the audio to the browser vendor is disclosed
+in the UI on first use and documented in
+[PRIVACY.md](PRIVACY.md#voice-input).
+
+Remaining work here, if it ever matters: on-device recognition, which would mean
+bundling a model. That is a multi-megabyte download inside a bundle that is
+currently 60 kB, and it would be worse at Chinese than the cloud service. Not
+worth it unless someone asks.
 
 ### 4. Android companion (usage + tasks)
 

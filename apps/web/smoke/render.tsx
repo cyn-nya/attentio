@@ -26,6 +26,7 @@ import type {
 import { JournalView, ReportsView, SettingsView, TasksView } from '../src/capture.tsx';
 import { Pet, deriveMood } from '../src/pet.tsx';
 import { ReminderStack } from '../src/ui.tsx';
+import { isSpeechSupported, speechLeavesDevice } from '../src/voice.ts';
 import { AppsView, FocusView, TimelineView, TodayView } from '../src/views.tsx';
 
 // ---------------------------------------------------------------------------
@@ -37,9 +38,17 @@ const store = new Map<string, string>();
 /**
  * Node 24 defines some of these as getter-only globals, so plain assignment
  * throws. defineProperty with configurable is the portable way to install a stub.
+ *
+ * The stub `window` below is a plain object rather than the global object, so a
+ * module that reads a browser API as `window.SpeechRecognition` would not see it.
+ * In a real browser those are the same property, so mirror onto the stub too —
+ * otherwise the harness silently reports "unsupported" for an API it was just
+ * handed, which is exactly how the voice checks first failed.
  */
 function defineGlobal(name: string, value: unknown): void {
   Object.defineProperty(globalThis, name, { value, configurable: true, writable: true });
+  const stub = (globalThis as unknown as { window?: Record<string, unknown> }).window;
+  if (name !== 'window' && stub && typeof stub === 'object') stub[name] = value;
 }
 
 defineGlobal('window', {
@@ -574,6 +583,47 @@ for (const state of ['unsupported', 'default', 'granted', 'denied'] as const) {
 {
   const html = render(<ReminderStack reminders={[]} onDismiss={noop} onComplete={noop} />);
   expectThat('an empty reminder stack renders nothing', html === '', `got ${JSON.stringify(html)}`);
+}
+
+// Voice is optional and must degrade to absence, not to a dead button. The
+// smoke environment has no SpeechRecognition, which is the Firefox case.
+{
+  expectThat('speech is reported unsupported without the API', !isSpeechSupported());
+  const html = render(<TasksView tasks={tasks} locale="en" reload={noop} onError={noop} />);
+  expectNot('no microphone button without speech support', html, 'Speak a task');
+  expect('tasks still usable by keyboard', html, ['What next?', 'Add']);
+
+  // Now pretend the browser has it, which is the Chrome case.
+  class FakeRecognition {
+    lang = '';
+    continuous = true;
+    interimResults = false;
+    maxAlternatives = 1;
+    // Typed explicitly: inferring from `null` makes them non-callable.
+    onresult: (() => void) | null = null;
+    onerror: (() => void) | null = null;
+    onend: (() => void) | null = null;
+    onstart: (() => void) | null = null;
+    start(): void {
+      this.onstart?.();
+    }
+    stop(): void {
+      this.onend?.();
+    }
+    abort(): void {
+      /* nothing to abort in the fake */
+    }
+  }
+  defineGlobal('SpeechRecognition', FakeRecognition);
+  const withSpeech = render(<TasksView tasks={tasks} locale="en" reload={noop} onError={noop} />);
+  expect('a microphone button appears when the browser can listen', withSpeech, ['Speak a task']);
+  expectThat('speech is reported supported with the API', isSpeechSupported());
+  // Unsupported should now be false, which is what gates the button.
+  expectThat(
+    'the disclosure is honest that audio leaves the device',
+    speechLeavesDevice(),
+    'the browser Speech API is a cloud service in Chromium',
+  );
 }
 
 // The pet's mood must come from the data, not from nothing.

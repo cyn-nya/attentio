@@ -52,6 +52,11 @@ titles at all.
 
 ## What is never recorded
 
+Attentio never records audio from your microphone on its own. The only way any
+audio is ever captured is if you press the voice button in the task screen, and
+then it is handled by the browser (see [Voice input](#voice-input) for where it
+goes). There is no always-on listening, in the daemon or in the dashboard.
+
 This is a commitment, not a configuration option. There is no setting that turns
 any of these on, because the code to capture them does not exist:
 
@@ -129,6 +134,41 @@ on:
 To disable AI entirely, leave `ai.enabled` false. Everything except the prose in
 the report works identically, because the report has a local implementation
 first and the model is an optional rewriter on top of it.
+
+---
+
+## Voice input
+
+Voice capture is **off unless you press the microphone**, and it is the one
+feature where something you say can leave the machine without an API key being
+configured.
+
+It uses the browser's built-in `SpeechRecognition` API rather than a bundled
+model, and that API is not local in the browsers where it works:
+
+- **Chrome and Edge** stream the audio to the browser vendor's speech service to
+  be transcribed. The audio does not pass through Attentio's daemon, but it does
+  leave your machine.
+- **Safari** may transcribe on-device, but this cannot be detected from a page, so
+  Attentio assumes the worst and says so.
+- **Firefox** has no implementation of the API; there the microphone button is not
+  rendered at all, rather than appearing and failing.
+
+Because of that, the following hold:
+
+- The microphone is **never** opened on page load, on a timer, or in the
+  background. Only a press starts it, and it stops after one utterance
+  (`continuous = false`) or when you press stop.
+- The disclosure appears **in the UI before the first use**, not in a settings
+  page, every time the control is used.
+- The transcript goes through the same `taskparse.ts` as typed text and is shown
+  as a parse preview before it is saved. Nothing is stored from the audio itself —
+  no recording is kept, and there is no code that could keep one.
+- Attentio's own daemon never receives audio. The text it receives is a task
+  title, through the same endpoint as a typed task.
+
+If you would rather nothing you say leaves the machine, do not use the microphone;
+typing goes through the identical parser and produces the identical task.
 
 ---
 
