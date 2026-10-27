@@ -150,6 +150,73 @@ test('weight presets change the ranking of a fragmented day', () => {
   assert.notEqual(balanced.score, calm.score, 'presets must actually differ');
 });
 
+test('exe and app are alternatives within one rule, and title is a refinement', () => {
+  // Regression: a rule listing both `exe` and `app` used to require both to
+  // match, so WeChat's mini-program host (exe `wechatappex`, display name
+  // "WeChat (mini program)") fell through to `unknown` even though the exe was
+  // listed. exe/app name the same program on different platforms, so they OR.
+  const bare = new RuleSet([
+    { id: 'user.both', category: 'deep-work', exe: ['helper'], app: ['friendly name'] },
+  ]);
+
+  assert.equal(
+    bare.classify({ app: 'Something Else', stem: 'helper', exePath: 'C:\\helper.exe', title: '' }).ruleId,
+    'user.both',
+    'a matching exe is enough when the display name differs',
+  );
+  assert.equal(
+    bare.classify({ app: 'Friendly Name', stem: 'other', exePath: 'C:\\other.exe', title: '' }).ruleId,
+    'user.both',
+    'a matching display name is enough when the exe differs',
+  );
+  assert.equal(
+    bare.classify({ app: 'Nothing', stem: 'nothing', exePath: 'C:\\nothing.exe', title: '' }).category,
+    'unknown',
+    'neither matching must still fall through',
+  );
+
+  // A rule that adds `title` is narrowed, not widened: the program must still
+  // match for the title to be consulted.
+  const narrowed = new RuleSet([
+    { id: 'user.narrowed', category: 'learning', exe: ['browserish'], title: 'course|lecture' },
+  ]);
+  assert.equal(
+    narrowed.classify({ app: 'B', stem: 'browserish', exePath: '', title: 'Lecture 4' }).ruleId,
+    'user.narrowed',
+  );
+  assert.equal(
+    narrowed.classify({ app: 'B', stem: 'browserish', exePath: '', title: 'Inbox' }).category,
+    'unknown',
+    'a title-only match on the wrong program must not count',
+  );
+  assert.equal(
+    narrowed.classify({ app: 'B', stem: 'otherapp', exePath: '', title: 'Lecture 4' }).category,
+    'unknown',
+    'the title must not rescue a non-matching program',
+  );
+});
+
+test('matches() explains the same decision classify() makes', () => {
+  // The explanation surfaced by `attentio why` must never disagree with the
+  // category actually recorded, so both paths share one set of semantics.
+  for (const probe of [
+    { exePath: 'C:\\Program Files\\Tencent\\WeChat\\WeChatAppEx.exe', title: 'WeChat' },
+    { exePath: 'C:\\Program Files\\Microsoft VS Code\\Code.exe', title: 'server.ts — attentio' },
+    { exePath: 'C:\\Program Files\\Google\\Chrome\\chrome.exe', title: 'GitHub — Pull requests' },
+    { exePath: 'C:\\totally\\unknown-thing.exe', title: 'mystery' },
+  ]) {
+    const normalized = normalizeWindow(probe);
+    const input = { ...normalized, ...probe };
+    const decided = rules.classify(input);
+    const explained = rules.matches(input);
+    if (decided.ruleId === 'fallback:unknown') {
+      assert.equal(explained.length, 0, `${probe.exePath}: nothing matched, so nothing should be explained`);
+    } else {
+      assert.equal(explained[0]?.id, decided.ruleId, `${probe.exePath}: first explained rule must be the winner`);
+    }
+  }
+});
+
 test('a day aggregates apps, categories, hours and accounts', () => {
   const minute = parseDayKey('2026-03-02') + 9 * 3_600_000;
   const rows: RollupRow[] = [

@@ -8,16 +8,26 @@
   "types": "./dist/index.d.ts",
   "exports": {
     ".": {
+      "development": "./src/index.ts",
       "types": "./dist/index.d.ts",
       "default": "./dist/index.js"
     }
   },
-  "files": ["dist", "README.md"],
+  "files": [
+    "dist",
+    "README.md",
+    "src"
+  ],
   "scripts": {
     "build": "tsc -p tsconfig.json",
     "typecheck": "tsc -p tsconfig.json --noEmit"
   },
-  "keywords": ["attentio", "focus", "productivity", "time-tracking"],
+  "keywords": [
+    "attentio",
+    "focus",
+    "productivity",
+    "time-tracking"
+  ],
   "engines": {
     "node": ">=22.6.0"
   }

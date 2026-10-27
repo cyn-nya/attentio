@@ -246,6 +246,8 @@ export type FocusGrade = 'A' | 'B' | 'C' | 'D';
 export interface FocusFactor {
   id: string;
   label: string;
+  /** Chinese label, so a zh report does not fall back to English. */
+  labelZh?: string;
   /** 0..1 normalized quality of this factor. */
   value: number;
   weight: number;

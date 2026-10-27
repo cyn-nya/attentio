@@ -79,6 +79,14 @@ export class Engine {
   private lastWindowAt = 0;
   private lastSystem: SystemSample | null = null;
   private lastTopCpu: { app: string; cpuPct: number; memBytes: number }[] = [];
+
+  /**
+   * Identity of this process, so the engine refuses to count itself. Matching on
+   * the app name would be wrong: Attentio runs on Node, and so does every dev
+   * server, MCP server and agent harness on this machine.
+   */
+  private readonly selfPid = process.pid;
+  private readonly selfExe = process.execPath;
   private lastInventory: WindowInventorySample | null = null;
   private startedAt = 0;
   private errorCount = 0;
@@ -202,7 +210,13 @@ export class Engine {
     this.busy.process = true;
     try {
       const now = this.now();
-      const samples: ProcessSample[] = this.collector.sampleProcesses(now);
+      // Never let Attentio count itself. Its own runtime is Node, and Node is
+      // also what every dev server, MCP server and agent harness runs on, so
+      // name-matching cannot separate us — identity can.
+      const selfPid = this.selfPid;
+      const samples: ProcessSample[] = this.collector
+        .sampleProcesses(now)
+        .filter((sample) => sample.pid !== selfPid && sample.exePath !== this.selfExe);
       if (samples.length > 0) this.accumulator.onProcesses(now, samples);
       const system = this.collector.sampleSystem(now);
       if (system) this.lastSystem = system;

@@ -18,12 +18,16 @@
     "pretest": "npm run build --workspace @attentio/shared",
     "test": "node --test --test-timeout=180000 \"packages/*/test/*.test.ts\"",
     "test:live": "node --test --test-timeout=180000 \"packages/daemon/test/collector.test.ts\"",
-    "dev": "node packages/cli/src/index.ts start",
-    "doctor": "node packages/cli/src/index.ts doctor",
-    "today": "node packages/cli/src/index.ts today",
+    "dev": "node --conditions=development packages/cli/src/index.ts start",
+    "doctor": "node --conditions=development packages/cli/src/index.ts doctor",
+    "today": "node --conditions=development packages/cli/src/index.ts today",
     "web": "npm run dev --workspace apps/web",
     "web:build": "npm run build --workspace apps/web",
-    "clean": "node scripts/clean.mjs"
+    "clean": "node scripts/clean.mjs",
+    "report": "node --conditions=development packages/cli/src/index.ts report",
+    "why": "node --conditions=development packages/cli/src/index.ts why",
+    "attentio": "node --conditions=development packages/cli/src/index.ts",
+    "prepare": "npm run build"
   },
   "devDependencies": {
     "@types/node": "^24.19.2",

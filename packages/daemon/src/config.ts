@@ -14,7 +14,7 @@ import { dirname, join, resolve } from 'node:path';
 import { randomUUID } from 'node:crypto';
 
 import type { FocusWeights } from '@attentio/shared';
-import { DEFAULT_FOCUS_WEIGHTS } from '@attentio/shared';
+import { DEFAULT_FOCUS_WEIGHTS, weightPreset } from '@attentio/shared';
 
 export type RedactionLevel = 'app' | 'context' | 'full';
 export type FocusPreset = 'balanced' | 'deep' | 'calm' | 'custom';
@@ -151,8 +151,13 @@ export function defaultConfig(): AttentioConfig {
     remote: {
       bindHost: '0.0.0.0',
       port: 8787,
+      // Binding beyond loopback keeps phone access working out of the box; the
+      // token requirement below is what actually protects it.
       enabled: true,
-      requireAuth: true,
+      // Loopback is trusted by default so the desktop dashboard opens without
+      // pairing. Set true on a shared machine — remote requests always need a
+      // token regardless of this flag.
+      requireAuth: false,
     },
     rules: [],
   };
@@ -256,11 +261,14 @@ export function loadConfig(options: LoadOptions = {}): LoadedConfig {
     created = true;
   }
 
-  config = applyEnvOverrides(config);
   // A config that lost its id (hand-edited) must get a fresh one, not ''.
   if (!config.deviceId) config.deviceId = randomUUID();
 
+  // Persist *before* environment overrides are applied: a one-off
+  // `ATTENTIO_PORT=1234 attentio start` must not quietly rewrite the stored port.
   if (created) saveConfig(config, { home });
+  config = applyEnvOverrides(config);
+
   return { config, file, created };
 }
 
@@ -326,10 +334,14 @@ export function saveConfig(config: AttentioConfig, options: { home?: string } = 
   renameSync(tmp, file);
 }
 
-/** Resolve the focus weights implied by the preset, unless the user customised them. */
+/**
+ * Resolve the focus weights implied by the preset. A `custom` preset uses the
+ * stored weights verbatim, which is what makes the score tunable and the
+ * explanation honest about what it was tuned to.
+ */
 export function resolveFocusWeights(config: AttentioConfig): FocusWeights {
-  if (config.focus.preset === 'custom') return config.focus.weights;
-  return config.focus.weights;
+  if (config.focus.preset === 'custom') return { ...config.focus.weights };
+  return weightPreset(config.focus.preset);
 }
 
 /** The public, secret-free projection handed to remote clients. */

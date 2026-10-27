@@ -131,8 +131,13 @@ export class RuleSet {
     for (const c of this.compiled) {
       const { rule } = c;
       if (!c.exeSet && !c.appSet && !c.titleRe) continue;
-      if (c.exeSet && !c.exeSet.has(stem)) continue;
-      if (c.appSet && !c.appSet.has(app)) continue;
+      // `exe` and `app` are two ways of naming the same program — a rule lists
+      // both so it works on platforms that give us a path and on those that only
+      // give a display name. They are alternatives, and `title` is the extra
+      // condition that narrows a rule down to one page or document.
+      if ((c.exeSet || c.appSet) && !(c.exeSet?.has(stem) ?? false) && !(c.appSet?.has(app) ?? false)) {
+        continue;
+      }
       if (c.titleRe && !c.titleRe.test(input.title)) continue;
       return {
         category: rule.category,
@@ -148,6 +153,36 @@ export class RuleSet {
       productivity: categoryProductivity('unknown'),
       note: 'no rule matched this app — classify it to improve your stats',
     };
+  }
+
+  /**
+   * Every rule that matches, in evaluation order, so `attentio why` can show a
+   * user *why* a window landed in a category instead of asking them to trust it.
+   * The first entry is the one that actually won.
+   */
+  matches(input: RuleMatchInput): { id: string; category: string; matchedOn: string[] }[] {
+    const stem = input.stem.toLowerCase();
+    const app = input.app.toLowerCase();
+    const out: { id: string; category: string; matchedOn: string[] }[] = [];
+
+    for (const c of this.compiled) {
+      const { rule } = c;
+      if (!c.exeSet && !c.appSet && !c.titleRe) continue;
+      const matchedOn: string[] = [];
+      // Same exe-OR-app / title-AND semantics as classify(), so the explanation
+      // `attentio why` prints always agrees with the category actually recorded.
+      const exeOk = c.exeSet?.has(stem) ?? false;
+      const appOk = c.appSet?.has(app) ?? false;
+      if (exeOk) matchedOn.push(`exe=${stem}`);
+      if (appOk) matchedOn.push(`app=${app}`);
+      if ((c.exeSet || c.appSet) && !exeOk && !appOk) continue;
+      if (c.titleRe) {
+        if (!c.titleRe.test(input.title)) continue;
+        matchedOn.push('title');
+      }
+      out.push({ id: rule.id, category: rule.category, matchedOn });
+    }
+    return out;
   }
 }
 

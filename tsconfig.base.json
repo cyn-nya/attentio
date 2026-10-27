@@ -9,7 +9,8 @@
 
     "baseUrl": ".",
     "paths": {
-      "@attentio/shared": ["./packages/shared/src/index.ts"]
+      "@attentio/shared": ["./packages/shared/src/index.ts"],
+      "@attentio/daemon": ["./packages/daemon/src/index.ts"]
     },
 
     "strict": true,

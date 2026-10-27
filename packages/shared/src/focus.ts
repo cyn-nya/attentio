@@ -147,6 +147,7 @@ export function scoreFocus(input: FocusInput, options: FocusScoreOptions = {}): 
     return {
       id,
       label: FOCUS_WEIGHT_META[id].label,
+      labelZh: FOCUS_WEIGHT_META[id].labelZh,
       value: round3(value),
       weight,
       contribution: round2(contribution),

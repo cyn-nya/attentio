@@ -144,6 +144,35 @@ export const APP_RULES: CategoryRule[] = [
   // =====================================================================
   // System / OS plumbing
   // =====================================================================
+  // =====================================================================
+  // Runtimes, embedded web hosts, browser automation
+  // =====================================================================
+  // A language runtime burning CPU for hours is almost always the user's own
+  // computation, so it counts as deep work. Attentio excludes its *own* process
+  // by pid, so this never becomes self-congratulation.
+  D({ id: 'dev.runtimes', category: 'deep-work', exe: ['node', 'nodejs', 'deno', 'bun', 'python', 'python3', 'pythonw', 'py', 'java', 'javaw', 'dotnet', 'ruby', 'php', 'perl', 'lua', 'luajit', 'rscript', 'erl', 'beam.smp', 'elixir', 'ghc', 'stack', 'dotnet-sdk'], note: 'language runtime or interpreter' }),
+  D({ id: 'dev.browser-automation', category: 'deep-work', exe: ['chrome-headless-shell', 'chromedriver', 'msedgedriver', 'geckodriver', 'playwright', 'puppeteer', 'selenium', 'webdriver', 'headless_shell'], note: 'browser automation / scraping' }),
+  // Embedded browsers are *hosts*, not apps: the interesting app is the one that
+  // embedded them, and that app already has its own rule.
+  D({ id: 'sys.embedders', category: 'system', exe: ['msedgewebview2', 'webview2', 'cefsharp.browsersubprocess', 'cefsharp', 'libcef', 'webviewhost', 'nwjs', 'nw', 'electron', 'cefclient'], note: 'embedded web view host' }),
+
+  // =====================================================================
+  // AI clients
+  // =====================================================================
+  // Split on purpose: an agent that edits files beside you is deep work, while a
+  // general chat assistant is a reference tool. Lumping them together would let
+  // "explain this stack trace" and "chat with a bot" score identically.
+  D({ id: 'ai.agents', category: 'deep-work', exe: ['deepseek harness', 'deepseek-harness', 'dsh', 'aider', 'continue', 'cline', 'roo code', 'codex', 'opencode', 'goose', 'crush', 'openhands', 'sweep'], app: ['deepseek harness'], note: 'AI coding agent' }),
+  D({ id: 'ai.desktop', category: 'reference', exe: ['chatgpt', 'chatbox', 'cherry studio', 'cherrystudio', 'lm studio', 'lmstudio', 'ollama', 'jan', 'gpt4all', 'anythingllm', 'msty', 'witsy', 'open-webui', 'lobe chat', 'lobehub', 'chatwise', 'cherry-studio', 'claude', 'perplexity', 'doubao', '豆包', 'kimi', 'moonshot', '通义千问', 'copilot', 'gemini'], app: ['chatgpt', 'claude', 'doubao', '豆包', 'kimi', 'lm studio', 'ollama'], productivity: 0.6, note: 'AI assistant app — a tool, not a destination' }),
+
+  // =====================================================================
+  // Proxy, VPN and hardware-vendor utilities
+  // =====================================================================
+  // Neither work nor play: these run so that other things can run. Scoring them
+  // as anything but "system" would quietly distort every day they appear in.
+  D({ id: 'sys.network-tools', category: 'system', exe: ['v2rayn', 'v2ray', 'v2raya', 'v2rayng', 'clash', 'clash-verge', 'clash-verge-rev', 'clashn', 'mihomo', 'clashx', 'sing-box', 'nekoray', 'nev2ray', 'qv2ray', 'shadowsocks', 'ss-local', 'ssr', 'trojan', 'hiddify', 'hiddify-next', 'surge', 'proxifier', 'wireguard', 'openvpn', 'tailscale', 'zerotier', 'frpc', 'ngrok', 'cloudflared'], note: 'proxy / tunnel / VPN utility' }),
+  D({ id: 'sys.vendor', category: 'system', exe: ['msi center', 'msicenter', 'msi afterburner', 'armoury crate', 'armourycrate', 'myasus', 'asus', 'asusupdate', 'dragon center', 'lenovo vantage', 'lenovovantage', 'legion', 'dell supportassist', 'supportassist', 'hpsystemeventutility', 'predatorsense', 'nahimic', 'rtkauduservice', 'rtkaudioservice', 'realtek', 'igfx', 'igfxtray', 'intel graphics', 'intelcp', 'dptf', 'esif', 'cowork', 'pdstyleagent', 'pulse', 'razer synapse', 'razer central', 'logi options', 'logioptionsplus', 'lghub', 'corsair', 'icue', 'steelseries', 'gg', 'nvcontainer', 'nvsphelper64', 'nvidia geforce experience', 'nvidia app', 'amdryzenmaster', 'ryzen master', 'amdcpusetup', 'amd software', 'radeon software', 'adrenalin', 'winaero', 'openrgb', 'signalrgb', 'wallpaper engine', 'wallpaperengine'], note: 'hardware vendor or OEM utility' }),
+
   D({ id: 'sys.shell', category: 'system', exe: ['dwm', 'csrss', 'wininit', 'winlogon', 'services', 'lsass', 'svchost', 'smss', 'fontdrvhost', 'sihost', 'shellexperiencehost', 'startmenuexperiencehost', 'searchhost', 'searchapp', 'runtimebroker', 'taskhostw', 'dllhost', 'ctfmon', 'spoolsv', 'securityhealthsystray', 'securityhealthservice', 'msmpeng', 'nissrv', 'widgets', 'widgetservice', 'useroobebroker', 'lockapp', 'logonui', 'consent', 'sppsvc', 'audiodg', 'registry', 'memory compression', 'system', 'system idle process', 'idle', 'windowserver', 'loginwindow', 'launchd', 'systemd', 'gnome-shell', 'kwin_x11', 'kwin_wayland', 'mutter', 'plasmashell', 'xfwm4', 'explorer.exe'], note: 'operating system component' }),
   D({ id: 'sys.lock', category: 'idle', exe: ['logonui', 'lockapp', 'screensaver', 'xscreensaver', 'gnome-screensaver', 'betterlockscreen'], note: 'screen locked' }),
 ];

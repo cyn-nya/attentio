@@ -1,0 +1,26 @@
+{
+  "name": "@attentio/cli",
+  "version": "0.1.0",
+  "private": false,
+  "type": "module",
+  "description": "The attentio command line: start tracking, read your day, write the diagnosis.",
+  "license": "MIT",
+  "bin": {
+    "attentio": "./bin/attentio.mjs"
+  },
+  "files": [
+    "bin",
+    "src",
+    "dist"
+  ],
+  "engines": {
+    "node": ">=22.6.0"
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.json"
+  },
+  "dependencies": {
+    "@attentio/daemon": "0.1.0",
+    "@attentio/shared": "0.1.0"
+  }
+}
