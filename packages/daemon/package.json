@@ -1,0 +1,29 @@
+{
+  "name": "@attentio/daemon",
+  "version": "0.1.0",
+  "description": "Attentio collector daemon: platform sensors, SQLite storage, REST/SSE API and the analytics engine.",
+  "license": "MIT",
+  "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    }
+  },
+  "files": ["dist"],
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "typecheck": "tsc -p tsconfig.json --noEmit"
+  },
+  "dependencies": {
+    "@attentio/shared": "^0.1.0"
+  },
+  "optionalDependencies": {
+    "koffi": "^3.3.4"
+  },
+  "engines": {
+    "node": ">=22.6.0"
+  }
+}

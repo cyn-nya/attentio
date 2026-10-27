@@ -1,0 +1,39 @@
+# --- dependencies ---
+node_modules/
+.pnpm-store/
+
+# --- build output ---
+dist/
+*.tsbuildinfo
+apps/web/dist/
+
+# --- runtime data (NEVER commit: this is personal activity data) ---
+data/
+*.db
+*.db-wal
+*.db-shm
+.attentio/
+attentio-export-*.json
+
+# --- local config / secrets ---
+.env
+.env.*
+!.env.example
+config.local.json
+
+# --- scratch ---
+.scratch/
+tmp/
+*.log
+
+# --- editors / OS ---
+.vscode/*
+!.vscode/extensions.json
+.idea/
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# --- test output ---
+coverage/
+.nyc_output/

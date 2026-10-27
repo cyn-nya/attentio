@@ -1,0 +1,10 @@
+# Normalize line endings for a cross-platform project.
+# Text files are stored LF; Windows checkouts get CRLF without polluting diffs.
+* text=auto eol=lf
+
+*.png binary
+*.jpg binary
+*.ico binary
+*.woff2 binary
+*.db binary
+*.sqlite binary

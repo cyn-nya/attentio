@@ -1,0 +1,32 @@
+{
+  "name": "attentio-monorepo",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Local-first attention & productivity intelligence for desktop and phone.",
+  "license": "MIT",
+  "engines": {
+    "node": ">=22.6.0"
+  },
+  "workspaces": [
+    "packages/*",
+    "apps/*"
+  ],
+  "scripts": {
+    "build": "npm run build --workspaces --if-present",
+    "typecheck": "tsc -p tsconfig.check.json",
+    "pretest": "npm run build --workspace @attentio/shared",
+    "test": "node --test --test-timeout=180000 \"packages/*/test/*.test.ts\"",
+    "test:live": "node --test --test-timeout=180000 \"packages/daemon/test/collector.test.ts\"",
+    "dev": "node packages/cli/src/index.ts start",
+    "doctor": "node packages/cli/src/index.ts doctor",
+    "today": "node packages/cli/src/index.ts today",
+    "web": "npm run dev --workspace apps/web",
+    "web:build": "npm run build --workspace apps/web",
+    "clean": "node scripts/clean.mjs"
+  },
+  "devDependencies": {
+    "@types/node": "^24.19.2",
+    "typescript": "^5.9.3"
+  }
+}
