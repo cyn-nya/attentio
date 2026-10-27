@@ -36,12 +36,9 @@ Worth remembering: the original comment said these helpers were "kept and tested
 because the arithmetic is easy to get wrong". It was wrong, in a way the tests
 could not see, until they were run in a timezone that has the problem.
 
-### 2. Task reminders that actually reach the user
+### 2. Task reminders that actually reach the user — **done**
 
-**Why.** The schema, the API and the `reminder` SSE event exist; nothing fires
-them on a schedule.
-
-**Done.** The daemon checks `db.dueReminders()` every 30 seconds with a
+The daemon checks `db.dueReminders()` every 30 seconds with a
 configurable lead (`tracking.reminderLeadMin`, default 5), emits `reminder` over
 SSE, the CLI prints it, the dashboard shows an in-page reminder stack plus a
 system notification when permitted, and `ai.dailyReportHour` writes one report a
@@ -63,6 +60,24 @@ Remaining work here, if it ever matters: on-device recognition, which would mean
 bundling a model. That is a multi-megabyte download inside a bundle that is
 currently 60 kB, and it would be worse at Chinese than the cloud service. Not
 worth it unless someone asks.
+
+### 3b. Linux and macOS, honestly scoped
+
+Both collectors are implemented and their parsing is now unit-tested (21 tests,
+runnable anywhere). What is *not* true is that they have been exercised on real
+machines, and the status table in the README says exactly that rather than
+implying otherwise.
+
+**Done when:** the collectors run in CI on `ubuntu-latest` and `macos-latest`
+against a headless session, asserting that they start, report a coherent
+`CollectorStatus`, and return samples whose shape satisfies the engine's
+invariants. That does not prove the numbers are right on a real desktop, but it
+does catch the failure mode that actually happens — an import that throws, a
+subprocess that no longer exists, a field that moved.
+
+**Known hard part, unchanged:** Wayland has no portable way to ask which window is
+focused. The collector reports `degraded` with that reason rather than recording
+nothing, which is the honest outcome until a compositor-specific protocol is used.
 
 ### 4. Android companion (usage + tasks)
 
@@ -119,12 +134,13 @@ would answer "how much of this week went to which course".
 scheduled weekly digest written to a file — or a self-contained HTML page with
 the charts inline — would make the diagnosis something a person shares.
 
-### Collector for Linux without a build step
+### Collector for Linux without a build step — **done**
 
-A `/proc`-based collector needs no native code: `/proc/<pid>/stat` for CPU,
-`/proc/<pid>/status` for memory, and `/proc/<pid>/comm` plus the X11 or Wayland
-focus API for the foreground window. Wayland is the hard part; X11 is easy.
-`packages/daemon/src/collector/linux.ts` has the shape of it.
+`packages/daemon/src/collector/linux.ts` reads `/proc/<pid>/stat` for CPU,
+`/proc/<pid>/statm` for resident memory, and `/proc/<pid>/comm` when the `exe`
+symlink is not readable — which, for other users' processes, is the common case
+rather than the exception. X11 focus comes from `xprop`/`xdotool`; Wayland is the
+hard part and still reports `degraded`.
 
 ---
 

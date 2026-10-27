@@ -71,9 +71,12 @@ but the surface is still small. Honest current state:
 | AI reports (bring your own key, payload preview before sending) | **Working**, off by default |
 | Desktop pet | **Working** |
 | Phone (PWA over LAN with pairing) | **Working** |
-| Reminders firing on a schedule | Schema + SSE event done, the timer is not |
-| Android / HarmonyOS native app | Planned — see [docs/ROADMAP.md](docs/ROADMAP.md) |
-| Linux / macOS collectors | Implemented, less exercised than Windows |
+| Reminders (in-page, system notification, CLI) | **Working** — fired by the daemon, not the browser |
+| Automatic daily report | **Working**, written locally by default |
+| Voice input for tasks | **Working** — Chromium only, and the audio leaves your machine ([why](docs/PRIVACY.md#voice-input)) |
+| Configurable day boundary | **Working** — a 01:30 session counts as the previous evening |
+| Android / HarmonyOS native app | Planned — the PWA works today, see [docs/ROADMAP.md](docs/ROADMAP.md) |
+| Linux / macOS collectors | Implemented; their parsing is unit-tested, the collectors themselves are not run in CI |
 
 **Where to look first:** [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) for how the
 pieces fit, [docs/ROADMAP.md](docs/ROADMAP.md) for what is not built yet and why,

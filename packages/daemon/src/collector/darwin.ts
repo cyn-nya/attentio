@@ -20,6 +20,7 @@ import type {
 } from '@attentio/shared';
 
 import { hasCommand, run } from './exec.ts';
+import { parseDelimitedList, parseIoregIdleNs, parsePsLine } from './parse.ts';
 import { SystemSampler } from './system.ts';
 import { capabilities, type Collector } from './types.ts';
 
@@ -75,7 +76,11 @@ end tell`;
       this.lastError = result.error;
       return null;
     }
-    const [appName = '', windowTitle = ''] = result.stdout.trimEnd().split('\n');
+    const newline = result.stdout.indexOf('\n');
+    const appName = (newline < 0 ? result.stdout : result.stdout.slice(0, newline)).trim();
+    // Everything after the first newline is the title: a title can itself contain
+    // one, and splitting on every newline would truncate it.
+    const windowTitle = newline < 0 ? '' : result.stdout.slice(newline + 1).trimEnd();
     if (!appName) return null;
     if (!windowTitle) this.titlesAvailable = false;
 
@@ -101,10 +106,8 @@ end tell`;
   private idleMs(): number {
     const result = run('ioreg', ['-c', 'IOHIDSystem'], 2000);
     if (!result.ok) return 0;
-    const match = /"HIDIdleTime"\s*=\s*(\d+)/.exec(result.stdout);
-    if (!match?.[1]) return 0;
-    // HIDIdleTime is in nanoseconds.
-    return Math.round(Number(match[1]) / 1_000_000);
+    // HIDIdleTime is a nanosecond counter.
+    return Math.round(parseIoregIdleNs(result.stdout) / 1_000_000);
   }
 
   sampleProcesses(now: number): ProcessSample[] {
@@ -116,22 +119,21 @@ end tell`;
     const nextCpu = new Map<string, number>();
 
     for (const line of result.stdout.split('\n')) {
-      const match = /^\s*(\d+)\s+([\d.]+)\s+(\d+)\s+(.+)$/.exec(line);
-      if (!match) continue;
-      const pid = Number(match[1]);
-      const cpuPct = Number(match[2]);
-      const memBytes = Number(match[3]) * 1024;
-      const exePath = (match[4] ?? '').trim();
-      if (!pid || !exePath) continue;
+      const row = parsePsLine(line);
+      if (!row) continue;
+      const { pid, cpuPct, memBytes, command: exePath } = row;
 
-      const app = normalizeWindow({ exePath, title: '' }).app;
+      // `comm` on macOS is a path where the process has one, but for some system
+      // processes it is only a name. Both go through the same stem logic, so the
+      // basename fallback below covers the second case.
+      const appHint = exePath.includes('/') ? '' : exePath;
+      const app = normalizeWindow({ exePath, title: '', appHint }).app;
       if (!app || app === 'Unknown') continue;
 
-      // `ps` gives an instantaneous percentage, not cumulative ticks; keep the
-      // cumulative map for platforms where we can, and pass the value straight
-      // through here.
+      // `ps` gives an instantaneous percentage, not cumulative ticks, so the
+      // value passes straight through rather than being differenced.
       nextCpu.set(String(pid), cpuPct);
-      samples.push({ ts: now, app, exePath, pid, cpuPct: Number.isFinite(cpuPct) ? cpuPct : 0, memBytes });
+      samples.push({ ts: now, app, exePath, pid, cpuPct, memBytes });
     }
 
     this.previousCpu.clear();
@@ -142,15 +144,23 @@ end tell`;
   }
 
   sampleInventory(now: number): WindowInventorySample | null {
-    const script = 'tell application "System Events" to get name of every application process whose visible is true';
+    // Delimited with Unit Separator rather than returned as an AppleScript list.
+    // "${...}" joins with ", " and application names really do contain commas, so
+    // the previous split on ',' fabricated apps out of the halves of real names.
+    const script = `set out to ""
+tell application "System Events"
+  repeat with p in (every application process whose visible is true)
+    set out to out & (name of p) & (ASCII character 31)
+  end repeat
+end tell
+return out`;
     const result = run('osascript', ['-e', script], 3000);
     if (!result.ok) return null;
-    const apps = result.stdout
-      .split(',')
-      .map((s) => s.trim())
-      .filter(Boolean)
-      .map((name) => normalizeWindow({ exePath: '', title: '', appHint: name }).app);
-    return { ts: now, apps: [...new Set(apps)], windowCount: apps.length };
+    const names = parseDelimitedList(result.stdout);
+    const apps = names
+      .map((name) => normalizeWindow({ exePath: '', title: '', appHint: name }).app)
+      .filter((app) => app && app !== 'Unknown');
+    return { ts: now, apps: [...new Set(apps)], windowCount: names.length };
   }
 
   sampleSystem(now: number): SystemSample | null {

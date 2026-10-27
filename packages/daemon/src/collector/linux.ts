@@ -25,16 +25,24 @@ import type {
 } from '@attentio/shared';
 
 import { hasCommand, run } from './exec.ts';
+import {
+  parseHexIds,
+  parseProcStat,
+  parseProcStatm,
+  parseXdotoolIds,
+  parseXpropActiveWindow,
+  parseXpropWindowProps,
+  ticksToMs,
+} from './parse.ts';
 import { SystemSampler } from './system.ts';
 import { capabilities, type Collector } from './types.ts';
-
-const CLOCK_TICKS = 100; // USER_HZ; 100 on every mainstream Linux build
-const PAGE_SIZE = 4096;
 
 interface ProcTimes {
   cpuMs: number;
   memBytes: number;
   exePath: string;
+  /** The kernel's name for the process; available when `exePath` is not. */
+  comm: string;
 }
 
 export class LinuxCollector implements Collector {
@@ -104,19 +112,23 @@ export class LinuxCollector implements Collector {
         }
       } else if (this.hasXprop) {
         const root = run('xprop', ['-root', '-notype', '_NET_ACTIVE_WINDOW']).stdout;
-        windowId = /0x[0-9a-f]+/i.exec(root)?.[0] ?? '';
+        windowId = parseXpropActiveWindow(root);
         if (windowId) {
           const props = run('xprop', ['-id', windowId, '_NET_WM_NAME', '_NET_WM_PID']).stdout;
-          title = /_NET_WM_NAME[^=]*=\s*"(.*)"/.exec(props)?.[1] ?? '';
-          pid = Number.parseInt(/_NET_WM_PID[^=]*=\s*(\d+)/.exec(props)?.[1] ?? '0', 10) || 0;
+          const parsed = parseXpropWindowProps(props);
+          title = parsed.title;
+          pid = parsed.pid;
         }
       }
 
       if (!title && !pid) return null;
       const exePath = pid > 0 ? this.exePathOf(pid) : '';
+      // Title as an app name would file a page under "GitHub - Chrome". The
+      // process name is what the app actually is; the title stays the title.
+      const appHint = exePath ? '' : pid > 0 ? this.commOf(pid) : title || 'unknown';
       return {
         ts: now,
-        app: normalizeWindow({ exePath, title, appHint: title || 'unknown' }).app,
+        app: normalizeWindow({ exePath, title, appHint }).app,
         exePath,
         pid,
         title,
@@ -160,7 +172,12 @@ export class LinuxCollector implements Collector {
       const cpuPct =
         previous !== undefined && intervalMs > 0 ? Math.max(0, ((times.cpuMs - previous) / intervalMs) * 100) : 0;
 
-      const app = normalizeWindow({ exePath: times.exePath, title: '', appHint: `pid${pid}` }).app;
+      // `/proc/<pid>/exe` is a symlink and is *not* readable for processes owned
+      // by other users, which on a normal desktop is most of them. Without the
+      // comm fallback every such process was named "Pid1234", so the app list
+      // filled with anonymous rows and no rule could ever match one.
+      const appHint = times.exePath ? '' : times.comm || `pid${pid}`;
+      const app = normalizeWindow({ exePath: times.exePath, title: '', appHint }).app;
       if (!app || app === 'Unknown') continue;
 
       samples.push({ ts: now, app, exePath: times.exePath, pid, cpuPct, memBytes: times.memBytes });
@@ -179,25 +196,22 @@ export class LinuxCollector implements Collector {
       let windowCount = 0;
       if (this.hasXdotool) {
         const list = run('xdotool', ['search', '--onlyvisible', '--name', '.']);
-        for (const id of list.stdout.split('\n').map((s) => s.trim()).filter(Boolean)) {
+        for (const id of parseXdotoolIds(list.stdout)) {
           windowCount++;
           const pidOut = run('xdotool', ['getwindowpid', id]).stdout.trim();
           const pid = Number.parseInt(pidOut, 10);
           if (!pid) continue;
-          const exePath = this.exePathOf(pid);
-          const app = normalizeWindow({ exePath, title: '' }).app;
-          if (app && app !== 'Unknown') apps.add(app);
+          apps.add(this.appOf(pid));
         }
       } else if (this.hasXprop) {
         const root = run('xprop', ['-root', '-notype', '_NET_CLIENT_LIST']).stdout;
-        const ids = root.match(/0x[0-9a-f]+/gi) ?? [];
+        const ids = parseHexIds(root);
         windowCount = ids.length;
         for (const id of ids) {
           const props = run('xprop', ['-id', id, '_NET_WM_PID']).stdout;
-          const pid = Number.parseInt(/_NET_WM_PID[^=]*=\s*(\d+)/.exec(props)?.[1] ?? '0', 10);
-          if (!pid) continue;
-          const app = normalizeWindow({ exePath: this.exePathOf(pid), title: '' }).app;
-          if (app && app !== 'Unknown') apps.add(app);
+          const parsed = parseXpropWindowProps(props);
+          if (!parsed.pid) continue;
+          apps.add(this.appOf(parsed.pid));
         }
       }
       return { ts: now, apps: [...apps], windowCount };
@@ -221,6 +235,26 @@ export class LinuxCollector implements Collector {
       return '';
     }
   }
+
+  /**
+   * The process name, which — unlike the `exe` symlink — is readable for every
+   * process regardless of which user owns it. Truncated to 15 characters by the
+   * kernel, which is a limitation of the source rather than of this code.
+   */
+  private commOf(pid: number): string {
+    try {
+      return readFileSync(`/proc/${pid}/comm`, 'utf8').trim();
+    } catch {
+      return '';
+    }
+  }
+
+  /** The resolved app name for a pid, with the comm fallback applied. */
+  private appOf(pid: number): string {
+    const exePath = this.exePathOf(pid);
+    const appHint = exePath ? '' : this.commOf(pid) || `pid${pid}`;
+    return normalizeWindow({ exePath, title: '', appHint }).app;
+  }
 }
 
 function readProc(pid: number): ProcTimes | null {
@@ -230,19 +264,13 @@ function readProc(pid: number): ProcTimes | null {
   } catch {
     return null;
   }
-  // The comm field may contain spaces and parentheses; everything after the
-  // final ')' is space-separated and safe to index.
-  const close = stat.lastIndexOf(')');
-  if (close < 0) return null;
-  const fields = stat.slice(close + 2).split(' ');
-  const utime = Number(fields[11] ?? 0);
-  const stime = Number(fields[12] ?? 0);
-  const cpuMs = ((utime + stime) / CLOCK_TICKS) * 1000;
+  const parsed = parseProcStat(stat);
+  if (!parsed) return null;
+  const cpuMs = ticksToMs(parsed.cpuTicks);
 
   let memBytes = 0;
   try {
-    const statm = readFileSync(`/proc/${pid}/statm`, 'utf8').split(' ');
-    memBytes = Number(statm[1] ?? 0) * PAGE_SIZE;
+    memBytes = parseProcStatm(readFileSync(`/proc/${pid}/statm`, 'utf8'));
   } catch {
     memBytes = 0;
   }
@@ -254,5 +282,5 @@ function readProc(pid: number): ProcTimes | null {
     exePath = '';
   }
 
-  return { cpuMs, memBytes, exePath };
+  return { cpuMs, memBytes, exePath, comm: parsed.comm };
 }

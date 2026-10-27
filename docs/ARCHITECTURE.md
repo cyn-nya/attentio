@@ -224,6 +224,37 @@ nothing, a screen that shows zeros because a field was renamed.
 
 ---
 
+## Sensing and parsing are separate
+
+Each non-Windows collector is split in two:
+
+* `darwin.ts` / `linux.ts` — run the subprocess or read the file, and talk to the
+  rest of the daemon;
+* `parse.ts` — turn that text into numbers, with no filesystem and no subprocess.
+
+The split exists because parsing is where these collectors fail **quietly**. A
+collector that cannot read `/proc` returns no samples and the day shows zeros, and
+someone notices that. A parser that reads the wrong field returns a plausible
+number for the wrong thing, and nothing anywhere complains. Extracting it also
+makes it the only part of those collectors testable on a machine that is neither
+Linux nor macOS, which is where this project is developed: `collector-parse.test.ts`
+feeds it real output shapes, including the ones that break naive parsing.
+
+Three bugs found this way, all of which would have shipped:
+
+* **Processes were named `Pid1234`.** `/proc/<pid>/exe` is a symlink and is not
+  readable for processes owned by other users — on a normal desktop, most of them.
+  With no exe path the app hint fell back to the pid, so the app list filled with
+  anonymous rows that no classification rule could ever match. `comm` is
+  world-readable and is now the fallback.
+* **Window titles kept xprop's escaping.** A window called `notes"final.txt"` was
+  stored as `notes\"final.txt\"`, showing the user backslashes that are not in
+  their filename. Unescaping is a single left-to-right pass, because a literal
+  backslash and a literal quote interact.
+* **macOS app names were split on commas.** AppleScript returns a list joined with
+  `", "`, and an application called `Foo, Inc.` became two invented apps. The
+  script now emits a Unit Separator, which an application name cannot contain.
+
 ## Adding a platform
 
 1. Implement `Collector` in `packages/daemon/src/collector/<platform>.ts`.
