@@ -206,6 +206,32 @@ function resolveWebRoot(homeWeb: string): string | undefined {
   return undefined;
 }
 
+/**
+ * Is this URL's host inside an IPv4 private range?
+ *
+ * Only used to decide whether to warn. A false negative costs a needless
+ * warning; a false positive would hide a real exposure, so the ranges are
+ * checked strictly.
+ */
+function isPrivateUrl(url: string): boolean {
+  const host = /^https?:\/\/([^:/]+)/.exec(url)?.[1];
+  if (!host) return false;
+  const parts = host.split('.').map(Number);
+  if (parts.length !== 4 || parts.some((part) => !Number.isInteger(part) || part < 0 || part > 255)) {
+    // A hostname rather than an address: treat as private, since mDNS and
+    // /etc/hosts names are the usual case and this only drives a warning.
+    return true;
+  }
+  const [a = 0, b = 0] = parts;
+  return (
+    a === 10 ||
+    a === 127 ||
+    (a === 172 && b >= 16 && b <= 31) ||
+    (a === 192 && b === 168) ||
+    (a === 169 && b === 254)
+  );
+}
+
 /** True when our own health endpoint answers on this loopback port. */
 async function servesAttentio(port: number): Promise<boolean> {
   try {
@@ -305,6 +331,11 @@ async function cmdStart(args: Args): Promise<number> {
   await engine.start();
 
   const pairing = server.createPairingCode();
+
+  // Private ranges are the actual LAN story. Anything else is a public address
+  // that merely happens to be on the same subnet.
+  const publicUrls = server.lanUrls.filter((url) => !isPrivateUrl(url));
+  const reachable = server.lanUrls.filter(isPrivateUrl);
   const label = (text: string) => style.bold(text);
 
   console.log(
@@ -324,8 +355,18 @@ async function cmdStart(args: Args): Promise<number> {
             ] as [string, string][])
           : []),
         ['dashboard', style.underline(server.url)],
-        ...(server.lanUrls.length > 0
-          ? ([['on your phone', style.underline(server.lanUrls[0] as string)]] as [string, string][])
+        ...(reachable.length > 0
+          ? ([['on your phone', style.underline(reachable[0] as string)]] as [string, string][])
+          : []),
+        ...(publicUrls.length > 0
+          ? ([
+              [
+                'exposed',
+                style.yellow(
+                  `${publicUrls.join(', ')} is a public address — this dashboard is reachable from the internet over plain HTTP`,
+                ),
+              ],
+            ] as [string, string][])
           : []),
         ['pairing code', `${style.bold(pairing.code)} ${style.gray('(valid 5 minutes)')}`],
         ['collector', `${status.health === 'ok' ? style.green(status.health) : style.yellow(status.health)} ${style.gray(status.detail)}`],
@@ -338,6 +379,19 @@ async function cmdStart(args: Args): Promise<number> {
       '',
     ].join('\n'),
   );
+
+  // A public address on your Wi-Fi is worth shouting about: the pairing token is
+  // the only thing between a stranger and your activity history.
+  if (publicUrls.length > 0) {
+    const zh = localeOf(args, config) === 'zh';
+    console.log(
+      warn(
+        zh
+          ? '  [!] 上面那个“手机地址”是公网地址，不是局域网地址。任何能访问网络的人都能打开\n      这个面板（需要配对令牌，而且不是加密连接）。\n      不想这样的话：remote.enabled = false 关闭远程，或 remote.bindHost = "127.0.0.1" 只服务本机。'
+          : `  [!] That "phone" address is publicly routable, not a private LAN address.\n      The dashboard is reachable from the internet; the pairing token is the only\n      thing protecting it, and the connection is not encrypted.\n      To change that: set remote.enabled = false, or remote.bindHost = "127.0.0.1"\n      to serve this machine only.`,
+      ),
+    );
+  }
 
   // Task reminders: a plain interval is enough, and it keeps working when the
   // web UI is closed.
