@@ -241,6 +241,14 @@ export interface PublicSettings {
     captureTitles: boolean;
     excludeApps: string[];
     excludeTitlePatterns: string[];
+    /** Minutes before a due time to remind about a task. */
+    reminderLeadMin: number;
+    /**
+     * Local hour at which a new day begins. The dashboard needs this to know
+     * which day key is "today" — without it a late-night session would be filed
+     * under the wrong date by exactly one day.
+     */
+    dayStartHour: number;
   };
   focus: {
     preset: 'balanced' | 'deep' | 'calm' | 'custom';

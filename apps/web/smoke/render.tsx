@@ -376,6 +376,8 @@ const settings: PublicSettings = {
     processIntervalMs: 5000,
     segmentRetentionDays: 90,
     captureTitles: true,
+    reminderLeadMin: 5,
+    dayStartHour: 4,
     excludeApps: ['1password', 'bitwarden'],
     excludeTitlePatterns: [],
   },

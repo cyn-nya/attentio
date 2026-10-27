@@ -115,8 +115,29 @@ export function logicalDayKey(ts: number, dayStartHour = 4): string {
 }
 
 export function logicalDayBounds(key: string, dayStartHour = 4): { start: number; end: number } {
-  const start = parseDayKey(key) + dayStartHour * HOUR;
-  return { start, end: start + DAY };
+  // Built from wall-clock components, not by adding milliseconds.
+  //
+  // `start + 24h` is wrong twice a year in any zone with daylight saving: 04:00
+  // plus 24 real hours is 05:00 on the day the clocks go forward, and 03:00 on the
+  // day they go back. That would double-count the 04:00-05:00 hour in spring and
+  // lose the 03:00-04:00 hour in autumn, in a function whose entire job is to
+  // partition time exactly once.
+  //
+  // Constructing `new Date(y, m, d, hour)` asks for a local wall-clock time and
+  // lets the runtime resolve the offset, so a boundary stays at :00 past the hour
+  // and a day is 23, 24 or 25 real hours as the calendar requires. Where the
+  // requested time does not exist (a zone that skips 04:00 on one date), the
+  // runtime normalises forward, which keeps adjacent days contiguous rather than
+  // overlapping.
+  const base = new Date(parseDayKey(key));
+  const start = new Date(base.getFullYear(), base.getMonth(), base.getDate(), dayStartHour).getTime();
+  const end = new Date(
+    base.getFullYear(),
+    base.getMonth(),
+    base.getDate() + 1,
+    dayStartHour,
+  ).getTime();
+  return { start, end };
 }
 
 /**

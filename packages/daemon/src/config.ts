@@ -67,6 +67,14 @@ export interface TrackingConfig {
    * it comes due, which is too late to be useful for most things.
    */
   reminderLeadMin: number;
+  /**
+   * Local hour at which a new "day" begins, 0-23. 4 means work done at 01:30 is
+   * counted in the previous evening's log rather than starting a lonely new day.
+   *
+   * 0 is plain midnight. Anything else shifts which calendar date a day key refers
+   * to: "2026-03-02" then means 03-02 04:00 to 03-03 04:00.
+   */
+  dayStartHour: number;
 }
 
 export interface FocusConfig {
@@ -151,6 +159,7 @@ export function defaultConfig(): AttentioConfig {
       // tool whose window title names a client.
       excludeTitlePatterns: [],
       reminderLeadMin: 5,
+      dayStartHour: 4,
     },
     focus: {
       preset: 'balanced',
@@ -386,6 +395,8 @@ export function toPublicSettings(config: AttentioConfig) {
       captureTitles: config.tracking.captureTitles,
       excludeApps: config.tracking.excludeApps,
       excludeTitlePatterns: config.tracking.excludeTitlePatterns,
+      reminderLeadMin: config.tracking.reminderLeadMin,
+      dayStartHour: config.tracking.dayStartHour,
     },
     focus: {
       preset: config.focus.preset,

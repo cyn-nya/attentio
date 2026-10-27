@@ -14,6 +14,8 @@ import {
   dayKey,
   detectFocusBlocks,
   endOfLocalDay,
+  logicalDayBounds,
+  logicalDayKey,
   mergeRollups,
   parseDayKey,
   shiftDayKey,
@@ -44,13 +46,26 @@ export interface AnalyticsDeps {
 }
 
 /** Local calendar bounds of a day key. */
-export function dayBounds(day: string): { from: number; to: number } {
+/**
+ * The span a day key refers to.
+ *
+ * `dayStartHour` of 0 is plain midnight; 4 means "2026-03-02" spans 03-02 04:00
+ * to 03-03 04:00, so a session that runs past midnight stays in the evening it
+ * started. Every caller passes the configured value, so there is exactly one
+ * definition of where a day begins.
+ */
+export function dayBounds(day: string, dayStartHour = 0): { from: number; to: number } {
+  if (dayStartHour > 0) {
+    const { start, end } = logicalDayBounds(day, dayStartHour);
+    return { from: start, to: end };
+  }
   const anchor = parseDayKey(day);
   return { from: startOfLocalDay(anchor), to: endOfLocalDay(anchor) };
 }
 
-export function todayKey(now = Date.now()): string {
-  return dayKey(now);
+/** The day key `now` falls into, honouring the configured boundary. */
+export function todayKey(now = Date.now(), dayStartHour = 0): string {
+  return dayStartHour > 0 ? logicalDayKey(now, dayStartHour) : dayKey(now);
 }
 
 /** Trusted devices, filtered to one when requested. */
@@ -88,8 +103,8 @@ function buildDeviceDay(
 
 export function computeDay(deps: AnalyticsDeps, query: DayQuery = {}): DayResponse {
   const { db, config } = deps;
-  const day = query.day ?? todayKey();
-  const { from, to } = dayBounds(day);
+  const day = query.day ?? todayKey(Date.now(), config.tracking.dayStartHour);
+  const { from, to } = dayBounds(day, config.tracking.dayStartHour);
   const devices = scopedDevices(db, query.deviceId);
   const weights = weightsFor(config, query.focusPreset);
 
@@ -134,9 +149,9 @@ export function computeDay(deps: AnalyticsDeps, query: DayQuery = {}): DayRespon
 }
 
 export function computeTimeline(deps: AnalyticsDeps, query: TimelineQuery = {}): TimelineResponse {
-  const { db } = deps;
-  const day = query.day ?? todayKey();
-  const { from, to } = dayBounds(day);
+  const { db, config } = deps;
+  const day = query.day ?? todayKey(Date.now(), config.tracking.dayStartHour);
+  const { from, to } = dayBounds(day, config.tracking.dayStartHour);
   const limit = Math.min(Math.max(query.limit ?? 2000, 1), 20_000);
   const segments = db.querySegments({ from, to, deviceId: query.deviceId, limit: limit + 1 });
   const truncated = segments.length > limit;
@@ -159,7 +174,7 @@ export interface TrendQuery {
 export function computeTrend(deps: AnalyticsDeps, query: TrendQuery = {}): TrendResponse {
   const { db, config } = deps;
   const days = Math.min(Math.max(query.days ?? 14, 1), 366);
-  const end = query.end ?? todayKey();
+  const end = query.end ?? todayKey(Date.now(), config.tracking.dayStartHour);
   const devices = scopedDevices(db, query.deviceId);
   const weights = weightsFor(config);
   const points: TrendPoint[] = [];
@@ -167,7 +182,7 @@ export function computeTrend(deps: AnalyticsDeps, query: TrendQuery = {}): Trend
 
   for (let offset = days - 1; offset >= 0; offset--) {
     const day = shiftDayKey(end, -offset);
-    const { from, to } = dayBounds(day);
+    const { from, to } = dayBounds(day, config.tracking.dayStartHour);
     const rollups: ReturnType<Db['queryRollups']> = [];
     const segments: ActivitySegment[] = [];
     for (const device of devices) {
@@ -238,9 +253,9 @@ export interface BlocksQuery {
 }
 
 export function computeBlocks(deps: AnalyticsDeps, query: BlocksQuery = {}): BlocksResponse {
-  const { db } = deps;
-  const day = query.day ?? todayKey();
-  const { from, to } = dayBounds(day);
+  const { db, config } = deps;
+  const day = query.day ?? todayKey(Date.now(), config.tracking.dayStartHour);
+  const { from, to } = dayBounds(day, config.tracking.dayStartHour);
   const minBlockMs = query.minBlockMs ?? 15 * MINUTE;
   const segments = db.querySegments({ from, to, deviceId: query.deviceId, limit: 20_000 });
   const blocks = detectFocusBlocks(segments, {

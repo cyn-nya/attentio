@@ -659,6 +659,53 @@ export function SettingsView({
         </p>
       </Card>
 
+      <Card title={zh ? '一天从几点开始' : 'When a day starts'}>
+        <label class="field">
+          <span>{zh ? '新的一天从' : 'A new day begins at'}</span>
+          <select
+            value={String(settings.tracking.dayStartHour)}
+            onChange={(event) =>
+              void patch({ tracking: { dayStartHour: Number((event.currentTarget as HTMLSelectElement).value) } })
+            }
+          >
+            <option value="0">{zh ? '00:00（自然日）' : '00:00 (plain midnight)'}</option>
+            <option value="2">02:00</option>
+            <option value="3">03:00</option>
+            <option value="4">{zh ? '04:00（推荐）' : '04:00 (recommended)'}</option>
+            <option value="5">05:00</option>
+            <option value="6">06:00</option>
+          </select>
+        </label>
+        <p class="muted small">
+          {zh
+            ? '凌晨 1:30 还在写代码时，这段时间会算进前一天的日志，而不是另起一个孤零零的“今天”。改这个设置会改变历史数据的切分方式：同一天的起止时间跟着变。'
+            : 'Work done at 01:30 then counts towards the previous evening instead of starting a lonely new day. Changing it re-slices history too: the same day key spans a different window.'}
+        </p>
+      </Card>
+
+      <Card title={zh ? '提醒' : 'Reminders'}>
+        <label class="field">
+          <span>{zh ? '提前多久提醒' : 'Remind me before a task is due'}</span>
+          <select
+            value={String(settings.tracking.reminderLeadMin)}
+            onChange={(event) =>
+              void patch({ tracking: { reminderLeadMin: Number((event.currentTarget as HTMLSelectElement).value) } })
+            }
+          >
+            <option value="0">{zh ? '准时（到点才提醒）' : 'On time (remind exactly when due)'}</option>
+            <option value="5">{zh ? '5 分钟' : '5 minutes'}</option>
+            <option value="10">{zh ? '10 分钟' : '10 minutes'}</option>
+            <option value="30">{zh ? '30 分钟' : '30 minutes'}</option>
+            <option value="60">{zh ? '1 小时' : '1 hour'}</option>
+          </select>
+        </label>
+        <p class="muted small">
+          {zh
+            ? '到点时，提醒会显示在页面顶部；如果允许了系统通知，切到别的程序也能收到。'
+            : 'When a task comes due the reminder appears at the top of the page, and as a system notification if you have allowed them.'}
+        </p>
+      </Card>
+
       <Card title={zh ? '隐私' : 'Privacy'}>
         <label class="toggle">
           <input

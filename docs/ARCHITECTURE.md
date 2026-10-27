@@ -133,6 +133,15 @@ recorded as `droppedGapMs` and attributed to nothing. A tracker that reports the
 eight hours your laptop spent closed as "background work" is not measuring
 anything.
 
+**A day is a query, not a column.** Rollups are keyed by `(device, minute, app,
+category)` and there is no date column, so "which day is this minute in" is
+decided at read time by `dayBounds()`. That is what lets `tracking.dayStartHour`
+exist: setting it to 4 makes a day span 04:00 to 04:00, so a session that runs past
+midnight stays in the evening it started, and no stored row has to change. It also
+means the boundary arithmetic has to be exactly right and mutual — see
+`logicalDayBounds`, which builds its edges from wall-clock components so that a
+daylight-saving day is 23 or 25 hours and adjacent days still tile once.
+
 **Why rollups are additive.** Each write adds to the existing row rather than
 replacing it, so two independent writers of the *same* minute still converge, and
 a crash mid-flush cannot lose a minute that was already counted.

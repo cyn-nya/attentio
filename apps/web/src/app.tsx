@@ -44,7 +44,10 @@ const TABS: { id: Tab; label: string; labelZh: string; icon: string }[] = [
 
 export function App() {
   const [tab, setTab] = useState<Tab>(() => (hashTab() ?? 'today') as Tab);
-  const [day, setDay] = useState(() => toDayKey(new Date()));
+  // Empty until settings arrive: the boundary that decides which day is "today"
+  // comes from the daemon, and guessing it here would file a late-night session
+  // under the wrong date.
+  const [day, setDay] = useState('');
   const [locale, setLocale] = useState<'en' | 'zh'>('en');
   const [appFilter, setAppFilter] = useState('');
 
@@ -258,6 +261,14 @@ export function App() {
   };
 
   const notification = useNotificationPermission();
+
+  // Keep the selected day honest. Until settings load there is no day; once they
+  // do, "today" means whatever the daemon's boundary says it means. A user who
+  // picked a day explicitly keeps it.
+  const dayStartHour = settings?.tracking.dayStartHour ?? 0;
+  useEffect(() => {
+    setDay((current) => (current === '' ? toDayKey(new Date(), dayStartHour) : current));
+  }, [dayStartHour]);
 
   const zh = locale === 'zh';
   const tabs = useMemo(() => TABS.map((tab_) => ({ ...tab_, text: zh ? tab_.labelZh : tab_.label })), [zh]);

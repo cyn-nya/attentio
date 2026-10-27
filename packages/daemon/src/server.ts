@@ -797,6 +797,14 @@ function applySettingsPatch(config: AttentioConfig, body: Record<string, unknown
         (v): v is string => typeof v === 'string',
       );
     }
+    if (typeof patch['reminderLeadMin'] === 'number' && Number.isFinite(patch['reminderLeadMin'])) {
+      // Clamped to a day: a lead longer than that would remind about every task
+      // the moment it is created.
+      config.tracking.reminderLeadMin = Math.min(1440, Math.max(0, Math.round(patch['reminderLeadMin'])));
+    }
+    if (typeof patch['dayStartHour'] === 'number' && Number.isFinite(patch['dayStartHour'])) {
+      config.tracking.dayStartHour = Math.min(23, Math.max(0, Math.round(patch['dayStartHour'])));
+    }
   }
   const focus = body['focus'];
   if (focus && typeof focus === 'object') {

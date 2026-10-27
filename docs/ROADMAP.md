@@ -12,28 +12,29 @@ work on a live machine. 43 tests, 52 render checks, 26 serving checks.
 
 ## Next
 
-### 1. The 4am day boundary
+### 1. The configurable day boundary — **done**
 
-**Why.** A student's 01:30 session should appear in *that* evening's log, not
-tomorrow's. Every sleep-aware tracker converges on this and it is the difference
-between an honest "what did I do yesterday" and one that splits a night in half.
+`tracking.dayStartHour` (default 4) is in the config and in `PublicSettings`,
+`dayBounds()` and `todayKey()` in `packages/daemon/src/analytics.ts` apply it,
+the CLI's day defaults and the dashboard's `toDayKey` both derive the current day
+through it, and the Settings screen has the picker. A 01:30 session now appears in
+the evening it started.
 
-**What exists.** `logicalDayKey()` and `logicalDayBounds()` in
-`packages/shared/src/time.ts` are implemented and tested, but deliberately wired
-into nothing. The daemon slices days at local midnight (`dayBounds()` in
-`packages/daemon/src/analytics.ts`), and both clients follow it.
+Storage was deliberately untouched: rollups are keyed by minute and have no day
+column, so the boundary is purely a query concern.
 
-**Done when:**
-- `tracking.dayStartHour` (default 4) exists in the config and in `PublicSettings`;
-- `dayBounds()` and `todayKey()` take it and use `logicalDayBounds`/`logicalDayKey`;
-- the CLI, the server's default `day`, and the dashboard's `toDayKey` all derive
-  the current day through that one path;
-- a test asserts that a 01:30 sample lands in the previous day's totals and that
-  `computeTrend` labels its points consistently;
-- the day picker shows the boundary, so "today" is not silently the wrong window.
+**The bug this surfaced.** `logicalDayBounds` computed its end as `start + 24h`.
+That is wrong twice a year in any zone with daylight saving: on the spring-forward
+date 04:00 plus 24 real hours is 05:00, and on the fall-back date it is 03:00. The
+first **double-counts** 04:00-05:00 into both days; the second **loses** an hour
+from every day. Both are invisible in a zone without DST, which is where the tests
+were written. It now builds boundaries from wall-clock components, and the tests
+switch `process.env.TZ` to America/New_York to prove a day is 23, 24 or 25 hours
+as the calendar requires while adjacent days still tile exactly once.
 
-**Trap to avoid.** Do not change the storage layer; rollups are keyed by minute
-and have no day column. The boundary is a *query* concern.
+Worth remembering: the original comment said these helpers were "kept and tested
+because the arithmetic is easy to get wrong". It was wrong, in a way the tests
+could not see, until they were run in a timezone that has the problem.
 
 ### 2. Task reminders that actually reach the user
 

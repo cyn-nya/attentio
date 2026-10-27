@@ -32,6 +32,7 @@ import {
   renderReportMarkdown,
   saveConfig,
   toPublicSettings,
+  todayKey,
   type AttentioConfig,
 } from '@attentio/daemon';
 import { API_PREFIX, dayKey, nextLocalHour, categoryLabel, humanBytes, humanDuration, clockTime, CATEGORY_ORDER, categoryMeta } from '@attentio/shared';
@@ -304,7 +305,7 @@ async function cmdStart(args: Args): Promise<number> {
     instruction?: string;
     allowAi: boolean;
   }): Promise<ReturnType<typeof db.saveReport>> => {
-    const day = request.day ?? dayKey(Date.now());
+    const day = request.day ?? todayKey(Date.now(), config.tracking.dayStartHour);
     const anchor = Date.parse(`${day}T00:00:00`);
     const dayData = computeDay({ db, config }, { day });
     const journal = db.listJournal({ from: anchor, to: anchor + 86_400_000 });
@@ -471,7 +472,7 @@ async function cmdStart(args: Args): Promise<number> {
     dailyReportTimer = setTimeout(() => {
       void (async () => {
         try {
-          const day = dayKey(Date.now());
+          const day = todayKey(Date.now(), config.tracking.dayStartHour);
           const record = await generateAndSaveReport({
             day,
             kind: 'daily',
@@ -687,7 +688,7 @@ async function cmdToday(args: Args): Promise<number> {
 async function cmdReport(args: Args): Promise<number> {
   const { config, db } = await openContext(args);
   try {
-    const day = flagString(args, 'day') ?? dayKey(Date.now());
+    const day = flagString(args, 'day') ?? todayKey(Date.now(), config.tracking.dayStartHour);
     const locale = localeOf(args, config);
     const response = computeDay({ db, config }, { day });
     const anchor = Date.parse(`${day}T00:00:00`);

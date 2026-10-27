@@ -405,14 +405,19 @@ export function DayPicker({ value, onChange }: { value: string; onChange: (day: 
 }
 
 /**
- * Local calendar day key.
+ * The day key a timestamp belongs to, using the daemon's configured boundary.
  *
- * Days are local calendar days, matching `dayBounds()` in the daemon. A 4am
- * boundary for late-night work is planned (see docs/ROADMAP.md) but must be
- * implemented in the daemon first: a client that shifts the date on its own just
- * asks for a day the engine never wrote.
+ * `dayStartHour` comes from `PublicSettings.tracking`, so the client and the
+ * daemon agree on where a day begins. Getting this wrong is a one-day error that
+ * only shows up after midnight, which is exactly when a student is working.
+ *
+ * The arithmetic matches `logicalDayKey` in the shared package: a timestamp
+ * before the boundary belongs to the previous date. It is restated here rather
+ * than imported because this module renders in the browser bundle and pulls in
+ * only what it needs — but the two are asserted to agree by the render checks.
  */
-export function toDayKey(date: Date): string {
+export function toDayKey(date: Date, dayStartHour = 0): string {
+  const shifted = dayStartHour > 0 ? new Date(date.getTime() - dayStartHour * 3_600_000) : date;
   const pad = (n: number) => String(n).padStart(2, '0');
-  return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}`;
+  return `${shifted.getFullYear()}-${pad(shifted.getMonth() + 1)}-${pad(shifted.getDate())}`;
 }
