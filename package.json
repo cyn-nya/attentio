@@ -27,6 +27,7 @@
     "typecheck": "tsc -p tsconfig.check.json && tsc -p apps/web/tsconfig.json",
     "test": "node --test --test-timeout=180000 \"packages/*/test/*.test.ts\"",
     "test:web": "npm run smoke --workspace apps/web",
+    "test:collector": "node --conditions=development --disable-warning=ExperimentalWarning tools/collector-check.ts",
     "test:live": "node --test --test-timeout=180000 \"packages/daemon/test/collector.test.ts\"",
     "test:all": "npm test && npm run test:web",
     "verify": "npm run typecheck && npm run test:all && npm run build",

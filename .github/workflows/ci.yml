@@ -45,6 +45,11 @@ jobs:
       - name: Unit tests
         run: npm test
 
+      - name: The collector check itself works
+        # The Linux and macOS jobs trust this tool. Run it on Windows as well, so a
+        # broken check fails loudly instead of passing everywhere by accident.
+        run: npm run test:collector
+
       - name: Dashboard render checks
         run: npm run test:web
 
@@ -74,6 +79,50 @@ jobs:
           # A missing asset must 404 rather than being answered with the shell.
           test "$(curl -s -o /dev/null -w '%{http_code}' "http://127.0.0.1:$PORT/assets/nope.js")" = "404"
           echo "dashboard serves correctly"
+
+  # The Linux and macOS collectors cannot be started on the machine Attentio is
+  # developed on, so "implemented" was unverifiable. This runs their real code —
+  # reading /proc, spawning ps and xprop — on the platforms they target.
+  #
+  # What it can prove is limited and the limitations are deliberate: a CI runner is
+  # headless, so no window is focused and nothing is idle, and the check asserts the
+  # sample *shapes* rather than any particular value. That still catches the failure
+  # that actually happens — an import that throws, a subprocess that no longer
+  # exists, a field that moved — which is the difference between a collector that is
+  # wrong and one that is absent.
+  collectors:
+    name: collectors (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 15
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest]
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24.x'
+          cache: npm
+
+      - name: Install
+        # --ignore-scripts: this job needs the daemon's source, not the dashboard
+        # bundle or the native Windows dependency.
+        run: npm ci --ignore-scripts
+
+      - name: The collector starts and returns sane samples
+        run: npm run test:collector
+
+      - name: Typecheck on this platform
+        # Cheap, and it catches platform-specific type errors such as a narrowing of
+        # process.platform that only compiles where the branch is reachable.
+        run: npm run typecheck
+
+      - name: The full node suite on this platform
+        # The live collector tests inside this skip themselves off Windows, so what
+        # runs here is the pure logic plus whatever this platform can support.
+        run: npm test
 
   # The dashboard is the only thing here with an installable bundle, so it is the
   # only thing worth checking on a second platform. Preact and Vite are portable;
