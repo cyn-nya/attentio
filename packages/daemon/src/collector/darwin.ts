@@ -24,6 +24,37 @@ import { parseDelimitedList, parseIoregIdleNs, parsePsLine } from './parse.ts';
 import { SystemSampler } from './system.ts';
 import { capabilities, type Collector } from './types.ts';
 
+/**
+ * How many consecutive samples with no title before concluding titles cannot be
+ * read. At the recommended 2 s interval this is ten seconds.
+ */
+export const EMPTY_TITLE_LIMIT = 5;
+
+/**
+ * Decide whether window titles are readable, from the title of one sample.
+ *
+ * The previous rule flipped `titlesAvailable` to false the first time a title came
+ * back empty. An empty title is *normal*: the frontmost application is the desktop
+ * or Finder a good deal of the time, an app can have no open window, and switching
+ * Spaces produces one. So the collector told users "window titles need Accessibility
+ * permission for your terminal" when their titles were working, reported itself
+ * `degraded` from then on, and — because the flag is also what
+ * `capabilities().windowTitles` is built from — advertised a capability as missing.
+ *
+ * A genuine permission failure is not intermittent: it returns no title every single
+ * time. Requiring a run of them separates the two, and erring towards optimism costs
+ * a momentarily empty title instead of a false claim about the user's system
+ * settings.
+ */
+export function updateTitleAvailability(
+  streak: number,
+  title: string,
+): { streak: number; titlesAvailable: boolean } {
+  if (title) return { streak: 0, titlesAvailable: true };
+  const next = streak + 1;
+  return { streak: next, titlesAvailable: next < EMPTY_TITLE_LIMIT };
+}
+
 export class DarwinCollector implements Collector {
   readonly id = 'darwin';
   readonly platform: Platform = 'darwin';
@@ -33,6 +64,8 @@ export class DarwinCollector implements Collector {
   private readonly previousCpu = new Map<string, number>();
   private previousSampleAt = 0;
   private titlesAvailable = true;
+  /** Consecutive samples whose window had no title; see `updateTitleAvailability`. */
+  private emptyTitleStreak = 0;
   private lastError = '';
 
   status(): CollectorStatus {
@@ -82,7 +115,11 @@ end tell`;
     // one, and splitting on every newline would truncate it.
     const windowTitle = newline < 0 ? '' : result.stdout.slice(newline + 1).trimEnd();
     if (!appName) return null;
-    if (!windowTitle) this.titlesAvailable = false;
+    {
+      const decided = updateTitleAvailability(this.emptyTitleStreak, windowTitle);
+      this.emptyTitleStreak = decided.streak;
+      this.titlesAvailable = decided.titlesAvailable;
+    }
 
     const pid = this.frontPid(appName);
     const exePath = pid > 0 ? this.exePathOf(pid) : '';

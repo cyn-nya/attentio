@@ -61,23 +61,30 @@ bundling a model. That is a multi-megabyte download inside a bundle that is
 currently 60 kB, and it would be worse at Chinese than the cloud service. Not
 worth it unless someone asks.
 
-### 3b. Linux and macOS, honestly scoped
+### 3b. Linux and macOS, exercised — **done**
 
-Both collectors are implemented and their parsing is now unit-tested (21 tests,
-runnable anywhere). What is *not* true is that they have been exercised on real
-machines, and the status table in the README says exactly that rather than
-implying otherwise.
+`tools/collector-check.ts` starts the real collector for the running platform and
+asserts what is checkable without a desktop; a `collectors` CI job runs it on
+`ubuntu-latest` and `macos-latest`, and the parsing has 25 unit tests that run
+anywhere. Both platforms pass.
 
-**Done when:** the collectors run in CI on `ubuntu-latest` and `macos-latest`
-against a headless session, asserting that they start, report a coherent
-`CollectorStatus`, and return samples whose shape satisfies the engine's
-invariants. That does not prove the numbers are right on a real desktop, but it
-does catch the failure mode that actually happens — an import that throws, a
-subprocess that no longer exists, a field that moved.
+What CI can and cannot prove is deliberate. It cannot prove the numbers are right on
+a real desktop — a runner is headless, so no window is focused and nothing is idle.
+It does prove the failures that actually happen: the module loads, `status()` is
+coherent, capabilities agree with health, and every sample satisfies the engine's
+invariants. On the macOS runner it found a real bug on the first run — a single
+empty window title (Finder, always, on a headless Mac) was being reported as a
+missing Accessibility permission, which downgraded the collector for the rest of the
+session.
 
 **Known hard part, unchanged:** Wayland has no portable way to ask which window is
 focused. The collector reports `degraded` with that reason rather than recording
 nothing, which is the honest outcome until a compositor-specific protocol is used.
+
+**Next for this area, if it matters:** run the collectors against a real X11
+session in CI with `xvfb`, which would make `xprop`/Xdotool paths exercisable
+rather than merely present. Not done because the value is in the window *selection*
+logic, which is four lines, against a nontrivial amount of CI plumbing.
 
 ### 4. Android companion (usage + tasks)
 

@@ -76,7 +76,7 @@ but the surface is still small. Honest current state:
 | Voice input for tasks | **Working** — Chromium only, and the audio leaves your machine ([why](docs/PRIVACY.md#voice-input)) |
 | Configurable day boundary | **Working** — a 01:30 session counts as the previous evening |
 | Android / HarmonyOS native app | Planned — the PWA works today, see [docs/ROADMAP.md](docs/ROADMAP.md) |
-| Linux / macOS collectors | Implemented; their parsing is unit-tested, the collectors themselves are not run in CI |
+| Linux / macOS collectors | **Working**, started on both platforms in CI; focus tracking needs `xprop`/`xdotool` on X11 and is unavailable under Wayland |
 
 **Where to look first:** [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) for how the
 pieces fit, [docs/ROADMAP.md](docs/ROADMAP.md) for what is not built yet and why,

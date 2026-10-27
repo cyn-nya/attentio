@@ -26,6 +26,7 @@ import {
   ticksToMs,
   unescapeXpropString,
 } from '../src/collector/parse.ts';
+import { EMPTY_TITLE_LIMIT, updateTitleAvailability } from '../src/collector/darwin.ts';
 
 // ---------------------------------------------------------------------------
 // /proc/<pid>/stat
@@ -190,6 +191,55 @@ test('xdotool window ids are decimal and one per line', () => {
   // xdotool prints a warning to stdout in some versions; it must be ignored
   // rather than turning into a bogus window id.
   assert.deepEqual(parseXdotoolIds('WARNING: something\n123\n'), ['123']);
+});
+
+// ---------------------------------------------------------------------------
+// macOS: is a missing window title evidence of a permission problem?
+// ---------------------------------------------------------------------------
+
+test('one empty window title does not mean titles are unreadable', () => {
+  // The case the old rule got wrong. The frontmost application is the desktop or
+  // Finder a good deal of the time, and both report no title.
+  const decided = updateTitleAvailability(0, '');
+  assert.equal(decided.titlesAvailable, true, 'a single empty title is normal');
+  assert.equal(decided.streak, 1);
+});
+
+test('a run of empty titles eventually concludes titles are unreadable', () => {
+  // A real Accessibility failure is not intermittent: every sample has no title.
+  let streak = 0;
+  let available = true;
+  for (let i = 1; i < EMPTY_TITLE_LIMIT; i++) {
+    const decided = updateTitleAvailability(streak, '');
+    streak = decided.streak;
+    available = decided.titlesAvailable;
+    assert.equal(available, true, `still optimistic after ${i} empty titles`);
+  }
+  const final = updateTitleAvailability(streak, '');
+  assert.equal(final.titlesAvailable, false, `degrades at ${EMPTY_TITLE_LIMIT} consecutive`);
+});
+
+test('a title arriving resets the streak, so a transient is not cumulative', () => {
+  // Switching Spaces, then back to a real window, must not add up to a false
+  // conclusion over an afternoon.
+  let streak = 0;
+  for (let round = 0; round < 20; round++) {
+    streak = updateTitleAvailability(streak, '').streak;
+    streak = updateTitleAvailability(streak, 'README.md - Code').streak;
+    assert.equal(streak, 0);
+  }
+  assert.equal(updateTitleAvailability(streak, 'README.md - Code').titlesAvailable, true);
+});
+
+test('recovery is immediate once a title can be read again', () => {
+  // The old rule never reconsidered within a session, so one empty title meant
+  // "degraded" for the rest of the day.
+  let streak = 0;
+  for (let i = 0; i < EMPTY_TITLE_LIMIT; i++) streak = updateTitleAvailability(streak, '').streak;
+  assert.equal(updateTitleAvailability(streak, '').titlesAvailable, false);
+  const recovered = updateTitleAvailability(streak, 'Inbox - Mail');
+  assert.equal(recovered.titlesAvailable, true);
+  assert.equal(recovered.streak, 0);
 });
 
 // ---------------------------------------------------------------------------

@@ -115,6 +115,17 @@ if (window) {
   check('the window sample is stamped', window.ts === now, String(window.ts));
   check('the window sample has a non-negative idle time', window.idleMs >= 0, String(window.idleMs));
   check('the window sample has a non-negative pid', window.pid >= 0, String(window.pid));
+
+  // A single sample with no title must not be reported as a missing capability. The
+  // frontmost application is the desktop or Finder much of the time, and on the
+  // headless macOS runner it is *always* Finder with no window — which is precisely
+  // the transient that used to downgrade the collector permanently.
+  const afterWindow = collector.status();
+  check(
+    'one empty window title does not downgrade the capability',
+    status.capabilities.windowTitles === false || afterWindow.capabilities.windowTitles === true,
+    `windowTitles was ${status.capabilities.windowTitles}, is now ${afterWindow.capabilities.windowTitles} after one sample of ${JSON.stringify(window)}`,
+  );
 }
 
 let inventory = null;
@@ -163,7 +174,7 @@ console.log('');
 console.log(`  health      ${status.health}`);
 console.log(`  detail      ${status.detail}`);
 console.log(`  processes   ${processes.length}`);
-console.log(`  window      ${window ? `${window.app} "${window.title}"` : 'null (headless is fine)'}`);
+console.log('  window      ' + (window ? JSON.stringify(window.app + ' / ' + window.title) : 'null (headless is fine)'));
 console.log(`  inventory   ${inventory ? `${inventory.apps.length} apps / ${inventory.windowCount} windows` : 'null'}`);
 console.log(
     `  system      ${system ? `load ${system.cpuLoad.toFixed(3)}, mem ${Math.round(system.memUsedBytes / 1e9)}/${Math.round(system.memTotalBytes / 1e9)} GB` : 'null'}`,
