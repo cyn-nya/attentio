@@ -153,6 +153,13 @@ is a real exposure and is treated as one:
   you do not control — campus Wi-Fi, a café — set `remote.enabled: false` and
   use the desktop dashboard instead. Do not port-forward this service to the
   internet.
+- **Some networks hand out public addresses.** Many university and corporate
+  Wi-Fi networks give clients routable IPs rather than private ones, which means
+  "your LAN" is the whole internet. Attentio only offers *private* addresses
+  (10/8, 172.16/12, 192.168/16, 169.254/16, 127/8) as a phone URL, and reports a
+  routable one as `exposed` with a warning naming the remedy. If you see that
+  line, the dashboard is reachable from outside your network, and the pairing
+  token is the only thing protecting it.
 
 If you bind to a non-loopback address, Attentio says so at startup, including
 the exact URLs it is reachable at, so this is never a surprise.
