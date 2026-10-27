@@ -60,17 +60,24 @@ but the surface is still small. Honest current state:
 | Area | State |
 |---|---|
 | Windows collector (foreground window, idle, per-process CPU/memory, window inventory) | **Working**, verified on a live machine |
-| Minute accounting (`engaged` / `background` / `away`) | **Working**, 33 tests |
-| Classification rules (12 categories, heavy zh-CN app coverage) | **Working** |
-| Focus scoring with per-factor explanations | **Working** |
+| Minute accounting (`engaged` / `background` / `away` / `@private`) | **Working** |
+| Classification rules (12 categories, 73 rules, heavy zh-CN app coverage) | **Working** |
+| Focus scoring with per-factor explanations and a confidence level | **Working** |
 | SQLite persistence, retention, migrations | **Working** |
-| HTTP API + web dashboard | In progress |
-| CLI (`attentio start / today / report / doctor`) | In progress |
-| Tasks, journal, reminders | Schema done, API in progress |
-| AI reports (bring your own key) | In progress |
-| Desktop pet | In progress |
+| CLI — `start today report why tasks journal pair trend config export doctor` | **Working** |
+| HTTP API (REST + SSE) | **Working** |
+| Web dashboard — today, timeline, apps, focus, tasks, journal, reports, settings | **Working**, installable as a PWA |
+| Tasks (natural-language quick-add) and journal | **Working** |
+| AI reports (bring your own key, payload preview before sending) | **Working**, off by default |
+| Desktop pet | **Working** |
+| Phone (PWA over LAN with pairing) | **Working** |
+| Reminders firing on a schedule | Schema + SSE event done, the timer is not |
+| Android / HarmonyOS native app | Planned — see [docs/ROADMAP.md](docs/ROADMAP.md) |
 | Linux / macOS collectors | Implemented, less exercised than Windows |
-| Phone (PWA remote; Android/HarmonyOS native later) | Planned |
+
+**Where to look first:** [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) for how the
+pieces fit, [docs/ROADMAP.md](docs/ROADMAP.md) for what is not built yet and why,
+[docs/PRIVACY.md](docs/PRIVACY.md) for the full data statement.
 
 ### Why Windows first?
 
@@ -82,23 +89,52 @@ inventory) costs well under 50 ms, so 1 Hz sampling is affordable.
 
 ## Install and run
 
-Requires **Node 22.6+** (Node 24 recommended — Attentio runs TypeScript directly
-and uses the built-in `node:sqlite`).
+Requires **Node 24+**. Attentio runs TypeScript directly (no build step for the
+CLI and daemon) and stores data with the built-in `node:sqlite`; both need a
+recent Node, and 24 is what is tested in CI.
 
 ```bash
 git clone https://github.com/cyn-nya/attentio.git
 cd attentio
-npm install
+npm install       # builds the packages and the dashboard; no compiler needed
 
-npm test          # 33 tests; the live collector tests need a desktop session
-npm run typecheck
+npm start         # start sampling and serve the dashboard
+```
+
+Then open <http://localhost:8787> on this machine, or `attentio pair` to use your
+phone. If port 8787 is already taken by something else, Attentio notices that the
+port is answering with *someone else's* service and moves itself rather than
+silently losing your traffic.
+
+Day to day:
+
+```bash
+npm run today     # the day's numbers in the terminal
+npm run report    # the written diagnosis
+npm run why       # why is this app classified the way it is
 npm run doctor    # what can Attentio actually see on this machine?
-npm run dev       # start tracking
+npm test          # 43 tests
+npm run test:web  # render every dashboard view with synthetic data
+npm run verify    # typecheck + all suites + build
 ```
 
 `attentio doctor` is the first thing to run on any machine. It reports exactly
 which capabilities your platform and session expose — and says so plainly when it
-is half-blind, instead of quietly recording zeros.
+is half-blind, instead of quietly recording zeros. It also lists every app it
+could not classify, with a paste-ready rule for each one.
+
+### Use it from your phone
+
+```bash
+npm start                    # prints a LAN URL and a six-digit pairing code
+```
+
+Enter the code on the phone, and the dashboard installs to the home screen and
+works over your local network. The code is single-use and expires in five
+minutes. Nothing is reachable from another device until you have approved it:
+loopback is trusted, and every other address needs a token. See
+[PRIVACY.md](docs/PRIVACY.md#remote-access) for the threat model, including what
+is deliberately *not* protected.
 
 ## Design in one picture
 
@@ -131,6 +167,9 @@ Two rules hold the whole thing together:
 | `packages/daemon` | Platform collectors, the engine, SQLite persistence, analytics, HTTP server. |
 | `packages/cli` | The `attentio` command. |
 | `apps/web` | Responsive PWA: today, timeline, apps, focus, tasks, journal, reports, settings, pet. |
+
+Full detail, including the sampling pipeline and the data model, is in
+[docs/ARCHITECTURE.md](docs/ARCHITECTURE.md).
 
 The split matters: `shared` is where the arithmetic lives, and it is fully
 unit-tested without a display, a database, or a network.
