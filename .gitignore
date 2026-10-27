@@ -37,3 +37,4 @@ desktop.ini
 # --- test output ---
 coverage/
 .nyc_output/
+apps/web/.smoke/

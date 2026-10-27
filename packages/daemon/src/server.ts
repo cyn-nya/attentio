@@ -531,22 +531,52 @@ export async function createAttentioServer(options: ServerOptions): Promise<Atte
       res.end('Attentio web dashboard is not built. Run `npm run web:build`.');
       return;
     }
-    const requested = decodeURIComponent(url.pathname);
-    const relative = requested === '/' ? 'index.html' : requested.replace(/^\/+/, '');
+    let relative: string;
+    try {
+      const requested = decodeURIComponent(url.pathname);
+      relative = requested === '/' ? 'index.html' : requested.replace(/^\/+/, '');
+    } catch {
+      // A malformed percent-escape is a bad request, not a crash and not a
+      // reason to serve something else.
+      throw new HttpError(400, 'bad_path', 'The request path is not valid percent-encoding');
+    }
+
     // Path traversal guard: the resolved path must stay inside webRoot.
     const candidate = resolve(join(webRoot, normalize(relative)));
     const inside = candidate === webRoot || candidate.startsWith(webRoot + sep);
-    const target = inside && existsSync(candidate) && statSync(candidate).isFile() ? candidate : join(webRoot, 'index.html');
-    if (!existsSync(target)) {
-      res.writeHead(404, { 'content-type': 'text/plain; charset=utf-8' });
-      res.end('Not found');
-      return;
+    if (!inside) {
+      // Never fall back to the shell here: a traversal attempt should learn
+      // nothing about what exists.
+      throw new HttpError(404, 'not_found', 'Not found');
     }
+    const isFile = existsSync(candidate) && statSync(candidate).isFile();
+
+    // Only a navigation falls back to the shell. Answering a missing *file* with
+    // index.html is how a stale bundle URL ends up being executed as JavaScript,
+    // which surfaces as a MIME-type error that hides the actual 404.
+    const looksLikeFile = relative.startsWith('assets/') || /\.[a-z0-9]{1,8}$/i.test(relative);
+    if (!isFile && looksLikeFile) {
+      throw new HttpError(404, 'not_found', `No such asset: /${relative}`);
+    }
+
+    const target = isFile ? candidate : join(webRoot, 'index.html');
+    if (!existsSync(target)) {
+      throw new HttpError(404, 'not_found', 'The dashboard has not been built. Run `npm run web:build`.');
+    }
+
     const ext = extname(target).toLowerCase();
     res.writeHead(200, {
       'content-type': MIME[ext] ?? 'application/octet-stream',
-      // Hashed asset names are safe to cache; index.html never is.
-      'cache-control': ext === '.html' ? 'no-store' : 'public, max-age=31536000, immutable',
+      // Three caching rules, because these are three different things:
+      //   * content-hashed bundles can be cached forever;
+      //   * index.html must never be cached, or a redeploy strands the client;
+      //   * unhashed files (sw.js, the manifest, icons) must be revalidated —
+      //     caching a service worker for a year makes it impossible to update.
+      'cache-control': target.endsWith('index.html')
+        ? 'no-store'
+        : relative.startsWith('assets/')
+          ? 'public, max-age=31536000, immutable'
+          : 'no-cache',
     });
     createReadStream(target).pipe(res);
   };

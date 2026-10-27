@@ -13,9 +13,9 @@
     "apps/*"
   ],
   "scripts": {
-    "build": "npm run build --workspaces --if-present",
-    "typecheck": "tsc -p tsconfig.check.json",
-    "pretest": "npm run build --workspace @attentio/shared",
+    "build": "tsc -b packages/shared packages/daemon packages/cli && npm run web:build",
+    "typecheck": "tsc -p tsconfig.check.json && tsc -p apps/web/tsconfig.json",
+    "pretest": "tsc -b packages/shared",
     "test": "node --test --test-timeout=180000 \"packages/*/test/*.test.ts\"",
     "test:live": "node --test --test-timeout=180000 \"packages/daemon/test/collector.test.ts\"",
     "dev": "node --conditions=development packages/cli/src/index.ts start",
@@ -27,7 +27,11 @@
     "report": "node --conditions=development packages/cli/src/index.ts report",
     "why": "node --conditions=development packages/cli/src/index.ts why",
     "attentio": "node --conditions=development packages/cli/src/index.ts",
-    "prepare": "npm run build"
+    "prepare": "npm run build",
+    "build:node": "tsc -b packages/shared packages/daemon packages/cli",
+    "test:web": "npm run smoke --workspace apps/web",
+    "test:all": "npm test && npm run test:web",
+    "verify": "npm run typecheck && npm run test:all && npm run build"
   },
   "devDependencies": {
     "@types/node": "^24.19.2",

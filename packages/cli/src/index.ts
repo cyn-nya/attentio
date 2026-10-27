@@ -9,6 +9,9 @@
  */
 
 import { createInterface } from 'node:readline';
+import { existsSync } from 'node:fs';
+import { join } from 'node:path';
+import { fileURLToPath } from 'node:url';
 
 import {
   createAttentioServer,
@@ -185,6 +188,24 @@ async function listenVerified(
   throw lastError ?? new Error('could not bind a port');
 }
 
+/**
+ * Find the dashboard to serve.
+ *
+ * Order matters: a built bundle in the checkout is what a developer expects to
+ * see, and ~/.attentio/web is what a packaged install would ship into.
+ */
+function resolveWebRoot(homeWeb: string): string | undefined {
+  const candidates = [
+    process.env['ATTENTIO_WEB_ROOT'],
+    join(fileURLToPath(new URL('.', import.meta.url)), '..', '..', '..', 'apps', 'web', 'dist'),
+    homeWeb,
+  ].filter((value): value is string => typeof value === 'string' && value.length > 0);
+  for (const candidate of candidates) {
+    if (existsSync(join(candidate, 'index.html'))) return candidate;
+  }
+  return undefined;
+}
+
 /** True when our own health endpoint answers on this loopback port. */
 async function servesAttentio(port: number): Promise<boolean> {
   try {
@@ -236,7 +257,7 @@ async function cmdStart(args: Args): Promise<number> {
       config,
       db,
       engine,
-      webRoot: target.web,
+      webRoot: resolveWebRoot(target.web),
       ...(flagString(args, 'host') ? { host: flagString(args, 'host') as string } : {}),
     },
     explicitPort ? Number(explicitPort) : config.remote.port,

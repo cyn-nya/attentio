@@ -15,4 +15,5 @@ export * from './format.ts';
 export * from './focus.ts';
 export * from './accumulator.ts';
 export * from './aggregate.ts';
+export * from './taskparse.ts';
 export * from './api.ts';

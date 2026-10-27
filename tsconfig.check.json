@@ -3,12 +3,12 @@
   "compilerOptions": {
     "noEmit": true,
     "rootDir": ".",
-    "types": ["node"]
+    "types": [
+      "node"
+    ]
   },
   "include": [
     "packages/*/src/**/*.ts",
-    "packages/*/test/**/*.ts",
-    "apps/web/src/**/*.ts",
-    "apps/web/src/**/*.tsx"
+    "packages/*/test/**/*.ts"
   ]
 }
